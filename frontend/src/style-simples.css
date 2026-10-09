@@ -1,0 +1,267 @@
+/* ==========================================================================
+   style-simples.css: versão minimalista do visual do Sudoku.
+
+   Este arquivo é um ponto de partida mais fácil que o style.css. Ele define
+   as MESMAS classes (o Elm não muda), mas quase só com `@apply`, sem
+   gradientes, animações, fontes extras ou seletores avançados.
+
+   Para usar este arquivo no lugar do style.css, troque o `import` no início
+   de src/main.js.
+
+   COMO LER UMA REGRA COM @apply
+   -----------------------------
+   O Elm escreve nomes que dizem O QUE o elemento é: `class "board"`. Aqui
+   dizemos COMO ele aparece, usando as classes utilitárias do Tailwind:
+
+       .board { @apply grid grid-cols-9 border-2; }
+
+   O `@apply` copia o CSS dessas classes para dentro de `.board`. Cada
+   utilitário faz uma coisa só:
+
+       grid          display: grid
+       grid-cols-9   9 colunas do mesmo tamanho
+       border-2      borda de 2px
+       p-4           padding (espaço interno) de 1rem em todos os lados
+       gap-2         espaço de 0.5rem entre os itens de um grid/flex
+       sm:...        só a partir de telas "small" (640px)
+       lg:...        só a partir de telas "large" (1024px)
+
+   Consulte qualquer utilitário em https://tailwindcss.com/docs
+
+   Os nomes como `btn`, `alert`, `badge` e `join` são componentes prontos
+   do daisyUI: https://daisyui.com/components/
+
+   CORES
+   -----
+   Use sempre as cores do tema (`bg-base-100`, `text-primary`, `bg-error`),
+   e não cores fixas como `bg-white`. Assim o tema escuro funciona sozinho.
+   `bg-primary/10` significa: cor primária com 10% de opacidade.
+   ========================================================================== */
+
+@import "tailwindcss";
+
+/* O Tailwind só gera as classes que encontra no código-fonte. */
+@source "./**/*.elm";
+
+/* Temas prontos do daisyUI. O botão sol/lua do cabeçalho alterna para o
+   tema `dark`. Para ver outros temas (cupcake, retro, synthwave...), veja
+   https://daisyui.com/docs/themes/ */
+@plugin "daisyui" {
+  themes: light --default, dark;
+}
+
+
+/* ---------- Página ---------- */
+
+@layer components {
+  .app {
+    @apply flex min-h-screen flex-col bg-base-200;
+  }
+
+  /* Largura do conteúdo. O cabeçalho e o jogo usam esta mesma classe, então
+     suas bordas ficam alinhadas. */
+  .app-container {
+    @apply mx-auto w-full max-w-md lg:max-w-3xl;
+  }
+
+  .app-header {
+    @apply bg-base-100 px-4 py-3 shadow-sm;
+  }
+
+  .app-header-content {
+    @apply flex items-center gap-3;
+  }
+
+  .app-title {
+    @apply text-2xl font-bold;
+  }
+
+  .app-subtitle {
+    @apply badge badge-ghost;
+  }
+
+  /* `ms-auto` empurra o botão para a direita. `swap` (daisyUI) mostra o
+     ícone `.swap-off` ou `.swap-on` conforme o checkbox. */
+  .theme-toggle {
+    @apply swap btn btn-circle btn-ghost ms-auto text-xl;
+  }
+
+  .app-main {
+    @apply flex-1 p-4;
+  }
+
+  .app-footer {
+    @apply p-4 text-center text-sm opacity-60;
+  }
+
+  /* Seletor de descendente: todo `<kbd>` que estiver dentro do rodapé. */
+  .app-footer kbd {
+    @apply kbd kbd-sm;
+  }
+
+
+  /* ---------- Layout do jogo ----------
+     Celular: uma coluna (tabuleiro em cima, painel embaixo).
+     Tela grande: duas colunas; o tabuleiro ocupa o seu tamanho (`auto`) e o
+     painel ocupa o resto (`1fr`, "uma fração" do espaço livre). */
+
+  .game {
+    @apply grid gap-6 lg:grid-cols-[auto_1fr] lg:items-start;
+  }
+
+  .side-panel {
+    @apply flex flex-col gap-4 rounded-box bg-base-100 p-4 shadow;
+  }
+
+  .panel-label {
+    @apply text-xs font-semibold uppercase opacity-60;
+  }
+
+  /* Altura mínima fixa, para o layout não "pular" quando a mensagem aparece
+     e some. `items-center` centraliza a mensagem nessa altura. */
+  .message-area {
+    @apply flex min-h-14 items-center;
+  }
+
+
+  /* ---------- Dificuldade e mensagens ---------- */
+
+  .difficulty-picker {
+    @apply join w-full;
+  }
+
+  .difficulty-option {
+    @apply btn join-item flex-1;
+  }
+
+  .difficulty-option--active {
+    @apply btn-primary;
+  }
+
+  .message          { @apply alert w-full text-sm; }
+  .message--error   { @apply alert-error; }
+  .message--success { @apply alert-success; }
+  .message--loading { @apply alert-soft; }
+  .message-close    { @apply btn btn-ghost btn-xs; }
+  .spinner          { @apply loading loading-spinner loading-sm; }
+
+
+  /* ---------- Tabuleiro ----------
+     O tabuleiro é um grid de 9 colunas. Cada casa tem tamanho fixo:
+     w-9/h-9 (2.25rem) no celular e w-12/h-12 (3rem) em telas maiores. */
+
+  .board {
+    @apply mx-auto grid w-fit grid-cols-9 border-2 border-base-content bg-base-100;
+  }
+
+  .cell {
+    @apply flex h-9 w-9 items-center justify-center border border-base-300 text-lg sm:h-12 sm:w-12 sm:text-2xl;
+    @apply relative cursor-pointer select-none;
+  }
+
+  /* Linhas grossas entre os blocos 3x3.
+     As casas são desenhadas em ordem de leitura (81 filhas do tabuleiro), e
+     `:nth-child` escolhe casas pela posição:
+       :nth-child(9n + 3)   -> casas 3, 12, 21, ... (3ª coluna)
+       :nth-child(9n + 6)   -> casas 6, 15, 24, ... (6ª coluna)
+     Para as linhas horizontais, escolhemos as casas 19 a 27 (3ª linha) e
+     46 a 54 (6ª linha). */
+  .cell:nth-child(9n + 3),
+  .cell:nth-child(9n + 6) {
+    @apply border-r-2 border-r-base-content;
+  }
+
+  .cell:nth-child(n + 19):nth-child(-n + 27),
+  .cell:nth-child(n + 46):nth-child(-n + 54) {
+    @apply border-b-2 border-b-base-content;
+  }
+
+  /* A última coluna (casas 9, 18, 27...) e a última linha (casas 73 a 81)
+     encostam na borda do tabuleiro, que já é grossa: sem esta regra, a
+     borda ficaria dupla. */
+  .cell:nth-child(9n)     { @apply border-r-0; }
+  .cell:nth-child(n + 73) { @apply border-b-0; }
+
+  .cell:hover { @apply bg-base-200; }
+
+  /* Origem do número: só peso da fonte e cor. */
+  .cell--given    { @apply font-bold; }
+  .cell--guess    { @apply text-info; }
+  .cell--revealed { @apply text-success; }
+
+  /* Destaques. Quando duas regras se aplicam à mesma casa, vale a que vem
+     DEPOIS no arquivo. Por isso a seleção vem depois da origem: numa casa
+     selecionada, a cor do texto da seleção ganha da cor do número. */
+  .cell--related    { @apply bg-base-200; }
+  .cell--same-value { @apply bg-accent/30; }
+  .cell--selected   { @apply bg-primary text-primary-content; }
+
+  /* O conflito vem por último para ganhar das cores acima. */
+  .cell--conflict { @apply text-error; }
+  .cell--selected.cell--conflict { @apply bg-error text-error-content; }
+
+
+  /* ---------- Marcações de canto ----------
+     Uma grade 3x3 pequena, por cima da casa (`absolute inset-0`). O Elm
+     escreve as marcações em ordem crescente, e cada `:nth-child` põe uma
+     delas numa posição da grade: primeiro os cantos, depois os lados.
+
+         1 5 2
+         7 9 8
+         3 6 4
+  */
+
+  .corner-marks {
+    @apply absolute inset-0.5 grid grid-cols-3 grid-rows-3 text-[0.55rem] leading-none sm:text-xs;
+  }
+
+  .corner-mark {
+    @apply flex items-center justify-center opacity-70;
+  }
+
+  .corner-mark:nth-child(1) { @apply col-start-1 row-start-1; }
+  .corner-mark:nth-child(2) { @apply col-start-3 row-start-1; }
+  .corner-mark:nth-child(3) { @apply col-start-1 row-start-3; }
+  .corner-mark:nth-child(4) { @apply col-start-3 row-start-3; }
+  .corner-mark:nth-child(5) { @apply col-start-2 row-start-1; }
+  .corner-mark:nth-child(6) { @apply col-start-2 row-start-3; }
+  .corner-mark:nth-child(7) { @apply col-start-1 row-start-2; }
+  .corner-mark:nth-child(8) { @apply col-start-3 row-start-2; }
+  .corner-mark:nth-child(9) { @apply col-start-2 row-start-2; }
+
+  .corner-mark--highlight {
+    @apply font-bold text-accent opacity-100;
+  }
+
+
+  /* ---------- Teclado numérico e ações ---------- */
+
+  .number-pad {
+    @apply grid grid-cols-3 gap-2;
+  }
+
+  .number-key {
+    @apply btn btn-lg;
+  }
+
+  .erase-key {
+    @apply btn btn-lg btn-ghost;
+  }
+
+  .mode-toggle {
+    @apply btn btn-lg col-span-2;
+  }
+
+  .mode-toggle--on {
+    @apply btn-warning;
+  }
+
+  .actions {
+    @apply grid grid-cols-3 gap-2;
+  }
+
+  .action-button        { @apply btn; }
+  .action-button--hint  { @apply btn-secondary; }
+  .action-button--solve { @apply btn-accent; }
+  .action-button--reset { @apply btn-ghost; }
+}

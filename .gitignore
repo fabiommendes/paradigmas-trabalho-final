@@ -1,0 +1,10 @@
+# Caches de ferramentas
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+
+# Saídas dos scripts do professor
+entregas/
+avaliacoes/
+notas-360*.csv
+auditoria.json

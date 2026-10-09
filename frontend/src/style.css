@@ -1,0 +1,789 @@
+/* ==========================================================================
+   style.css: todo o visual do Sudoku.
+
+   COMO ESTE ARQUIVO ESTÁ ORGANIZADO
+   ---------------------------------
+     1. Importações (Tailwind, daisyUI, fontes)
+     2. Temas de cores do daisyUI (claro e escuro)
+     3. Fontes do Tailwind (@theme)
+     4. VARIÁVEIS DE PERSONALIZAÇÃO  <- comece por aqui para mudar o estilo
+     5. Base: fundo da página, textura, seleção de texto
+     6. Componentes (classes semânticas usadas pelo Elm)
+     7. Animações e acessibilidade
+
+   UTILITÁRIOS x CLASSES SEMÂNTICAS
+   --------------------------------
+   O Tailwind incentiva escrever o estilo direto no HTML com classes
+   utilitárias: `class "flex gap-2 p-4 rounded-xl bg-base-100"`. É rápido,
+   mas o código Elm fica cheio de detalhes visuais e difícil de ler.
+
+   Aqui fazemos o contrário: o Elm usa nomes que dizem O QUE o elemento é
+   (`board`, `cell`, `number-key`), e este arquivo diz COMO ele aparece.
+   Para não perder as vantagens do Tailwind, usamos `@apply`, que copia o
+   CSS de classes utilitárias para dentro de uma classe nossa:
+
+       .actions { @apply flex gap-2; }
+       ⇣ vira
+       .actions { display: flex; gap: 0.5rem; }
+
+   Também funciona com componentes do daisyUI: `@apply btn btn-primary`.
+
+   Nas partes mais elaboradas (gradientes, animações, seletores complexos),
+   escrevemos CSS puro, que é mais expressivo que qualquer utilitário.
+
+   CONVENÇÃO DE NOMES (BEM)
+   ------------------------
+   Usamos uma versão simplificada do BEM (Bloco, Elemento, Modificador):
+
+       .cell             bloco: uma casa do tabuleiro
+       .cell--selected   modificador: uma VARIAÇÃO do bloco (dois hífens)
+       .app-header       elemento/parte de um bloco maior (um hífen)
+
+   O Elm liga e desliga modificadores com `classList`.
+
+   CSS ANINHADO (nesting)
+   ----------------------
+   O CSS moderno aceita regras dentro de regras. `&` representa o seletor
+   de fora:
+
+       .cell {
+         color: black;
+         &:hover { color: red; }        -> .cell:hover
+         &.cell--given { ... }          -> .cell.cell--given
+       }
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. IMPORTAÇÕES
+   ========================================================================== */
+
+@import "tailwindcss";
+
+/* Fontes "auto-hospedadas": os arquivos vêm do npm (pacotes @fontsource) e
+   são servidos junto com o site. Não dependem do Google Fonts nem de
+   internet. Para trocar uma fonte, veja https://fontsource.org, rode
+   `npm install @fontsource-variable/NOME` e troque a linha abaixo.
+
+   Fontes "variáveis" permitem ajustar peso, largura etc. de forma contínua
+   (qualquer peso entre 100 e 900, por exemplo), com um único arquivo. */
+@import "@fontsource-variable/fraunces/full.css"; /* título */
+@import "@fontsource-variable/outfit";            /* interface e números */
+
+/* O Tailwind só gera as classes utilitárias que encontra no código-fonte. */
+@source "./**/*.elm";
+
+/* daisyUI com os temas embutidos `light` e `dark`. Logo abaixo (seção 2)
+   redefinimos as cores desses dois temas. Para experimentar outros temas
+   prontos (cupcake, synthwave, retro...), veja
+   https://daisyui.com/docs/themes/ */
+@plugin "daisyui" {
+  themes: light, dark;
+}
+
+
+/* ==========================================================================
+   2. TEMAS DE CORES
+
+   Cada tema define as mesmas variáveis (--color-primary, --color-base-100,
+   ...). Todos os componentes usam essas variáveis, então trocar o tema troca
+   tudo de uma vez.
+
+   COMO O TEMA É ESCOLHIDO
+   O botão sol/lua do cabeçalho é um checkbox com a classe `theme-controller`
+   e `value="dark"`. O daisyUI gera uma regra assim:
+
+       :root:has(input.theme-controller[value=dark]:checked) { ... }
+
+   Ou seja: "se a página contém esse checkbox marcado, use o tema escuro".
+   A troca de tema acontece só com CSS; o Elm apenas desenha o checkbox.
+   Na primeira visita, o main.js marca o checkbox se o sistema operacional
+   estiver em modo escuro, e depois lembra a escolha do jogador.
+
+   Os nomes `light` e `dark` são os dos temas embutidos do daisyUI. Usando o
+   mesmo nome, PERSONALIZAMOS esses temas em vez de criar temas novos. Assim o
+   Elm funciona igual com este arquivo e com o style-simples.css, que usa os
+   temas originais.
+
+   As cores estão em OKLCH: oklch(luminosidade croma matiz).
+     - luminosidade: 0% (preto) a 100% (branco)
+     - croma: 0 (cinza) até ~0.37 (cor muito saturada)
+     - matiz: ângulo de 0 a 360 (0 vermelho, 90 amarelo, 150 verde,
+       250 azul, 300 roxo)
+   A vantagem do OKLCH: mudando só a matiz, a cor continua com o mesmo
+   "brilho" aparente. Ótimo para criar paletas.
+
+   Gerador visual de temas: https://daisyui.com/theme-generator/
+   ========================================================================== */
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;       /* tema usado quando o checkbox está desmarcado */
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: oklch(99% 0.01 80);    /* papel */
+  --color-base-200: oklch(96% 0.02 80);
+  --color-base-300: oklch(90% 0.03 75);
+  --color-base-content: oklch(28% 0.04 265); /* tinta */
+  --color-primary: oklch(55% 0.2 275);     /* anil: seleção */
+  --color-primary-content: oklch(98% 0.01 275);
+  --color-secondary: oklch(68% 0.19 20);   /* coral: dica */
+  --color-secondary-content: oklch(99% 0.01 20);
+  --color-accent: oklch(78% 0.15 75);      /* âmbar: destaques */
+  --color-accent-content: oklch(28% 0.05 75);
+  --color-neutral: oklch(32% 0.04 265);
+  --color-neutral-content: oklch(97% 0.01 265);
+  --color-info: oklch(52% 0.17 250);       /* números do jogador */
+  --color-info-content: oklch(98% 0.01 250);
+  --color-success: oklch(58% 0.14 160);    /* números revelados */
+  --color-success-content: oklch(98% 0.01 160);
+  --color-warning: oklch(76% 0.16 65);     /* modo de marcação */
+  --color-warning-content: oklch(28% 0.06 65);
+  --color-error: oklch(58% 0.21 25);       /* conflitos */
+  --color-error-content: oklch(98% 0.01 25);
+
+  /* Arredondamento e "profundidade" dos componentes do daisyUI. */
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  default: false;
+  /* Não usamos `prefersdark: true`: com ele, num sistema escuro, desmarcar o
+     checkbox não voltaria ao tema claro. A preferência do sistema é lida
+     pelo main.js e passada ao Elm. */
+  prefersdark: false;
+  color-scheme: dark;
+
+  --color-base-100: oklch(22% 0.03 270);
+  --color-base-200: oklch(18% 0.03 270);
+  --color-base-300: oklch(30% 0.04 270);
+  --color-base-content: oklch(92% 0.02 270);
+  --color-primary: oklch(68% 0.18 280);
+  --color-primary-content: oklch(15% 0.04 280);
+  --color-secondary: oklch(72% 0.17 15);
+  --color-secondary-content: oklch(15% 0.04 15);
+  --color-accent: oklch(82% 0.14 80);
+  --color-accent-content: oklch(20% 0.04 80);
+  --color-neutral: oklch(30% 0.03 270);
+  --color-neutral-content: oklch(92% 0.02 270);
+  --color-info: oklch(78% 0.12 230);
+  --color-info-content: oklch(18% 0.04 230);
+  --color-success: oklch(78% 0.14 160);
+  --color-success-content: oklch(18% 0.04 160);
+  --color-warning: oklch(80% 0.15 70);
+  --color-warning-content: oklch(20% 0.05 70);
+  --color-error: oklch(68% 0.2 22);
+  --color-error-content: oklch(15% 0.04 22);
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+
+/* ==========================================================================
+   3. FONTES NO TAILWIND
+
+   Variáveis dentro de `@theme` viram utilitários do Tailwind: `--font-display`
+   cria a classe `font-display`, que podemos usar em `@apply font-display`.
+   `--font-sans` substitui a fonte padrão da página inteira.
+   ========================================================================== */
+
+@theme {
+  --font-sans: "Outfit Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces Variable", ui-serif, Georgia, serif;
+}
+
+
+/* ==========================================================================
+   4. VARIÁVEIS DE PERSONALIZAÇÃO
+
+   Quer deixar o projeto com a sua cara? Comece mudando os valores abaixo.
+   Variáveis CSS (custom properties) começam com `--` e são lidas com
+   `var(--nome)`. Elas "cascateiam": um valor definido num elemento vale
+   para todos os seus descendentes, e pode ser sobrescrito mais abaixo na
+   árvore (veja como o tema escuro redefine algumas logo em seguida).
+
+   `color-mix(in oklch, A 30%, B)` mistura duas cores: 30% de A, 70% de B.
+   Com `transparent` no lugar de B, obtemos A com 30% de opacidade.
+   ========================================================================== */
+
+:root {
+  /* --- Tipografia --- */
+  --font-title: var(--font-display);  /* título "Sudoku" */
+  /* Todos os números usam UMA fonte geométrica. A origem de cada número
+     (pista, jogador, Prolog) é indicada só por peso, cor e fundo. Fontes
+     variáveis aceitam qualquer peso de 100 a 900, não só 400 e 700. */
+  --font-numbers: var(--font-sans);
+  --given-weight: 700;     /* pistas: firmes */
+  --guess-weight: 400;     /* jogador: mais leve */
+  --revealed-weight: 300;  /* Prolog: fino */
+  --marks-weight: 500;
+
+  /* --- Layout --- */
+  --panel-width: 18rem;  /* painel lateral (telas largas) */
+  --game-gap: 1.5rem;    /* espaço entre tabuleiro e painel */
+
+  /* --- Tabuleiro --- */
+  /* O menor entre: a largura da tela menos o padding lateral do `.app-main`
+     (2 x 1rem), um teto em rem e uma fração da altura. `min()` aceita
+     unidades misturadas, e a subtração dentro dele funciona como num
+     `calc()`. Se usasse 94vw, o tabuleiro somado ao padding passaria da
+     largura da tela nos celulares. */
+  --board-size: min(100vw - 2rem, 32rem, 70vh);
+  --board-radius: 1.25rem;
+  --board-line-thin: 1px;
+  --board-line-thick: 3px;
+  --board-line-color: color-mix(in oklch, var(--color-base-content) 16%, transparent);
+  --board-box-color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+  --board-shadow:
+    0 1px 2px color-mix(in oklch, var(--color-base-content) 10%, transparent),
+    0 24px 48px -12px color-mix(in oklch, var(--color-primary) 35%, transparent);
+
+  /* --- Cores de estado das casas --- */
+  --cell-bg: transparent;
+  --cell-hover: color-mix(in oklch, var(--color-primary) 10%, transparent);
+  --cell-related: color-mix(in oklch, var(--color-primary) 7%, transparent);
+  --cell-same-value: color-mix(in oklch, var(--color-accent) 35%, transparent);
+  --cell-selected: var(--color-primary);
+  --cell-conflict: var(--color-error);
+  --given-color: var(--color-base-content);
+  --guess-color: var(--color-info);
+  --revealed-color: var(--color-success);
+
+  /* Fundo que indica a origem do número. Fica numa camada própria
+     (background-image), por cima da cor de estado (background-color), e por
+     isso convive com os destaques de linha, coluna e mesmo número. */
+  --given-tint: color-mix(in oklch, var(--color-base-content) 7%, transparent);
+  --guess-tint: color-mix(in oklch, var(--color-info) 11%, transparent);
+  --revealed-tint: color-mix(in oklch, var(--color-success) 11%, transparent);
+
+  /* --- Fundo da página --- */
+  /* Vários gradientes radiais sobrepostos formam um "mesh gradient". */
+  --page-gradient:
+    radial-gradient(60rem 40rem at 10% -10%, color-mix(in oklch, var(--color-primary) 22%, transparent), transparent 70%),
+    radial-gradient(50rem 40rem at 110% 10%, color-mix(in oklch, var(--color-secondary) 18%, transparent), transparent 70%),
+    radial-gradient(60rem 50rem at 50% 120%, color-mix(in oklch, var(--color-accent) 22%, transparent), transparent 70%);
+  --texture-opacity: 0.35;  /* granulado sobre o fundo; 0 desliga */
+  --dot-grid-opacity: 0.5;  /* grade de pontinhos; 0 desliga */
+
+  /* --- Efeito vidro (glassmorphism) dos painéis --- */
+  --glass-bg: color-mix(in oklch, var(--color-base-100) 72%, transparent);
+  --glass-border: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  --glass-blur: 16px;
+
+  /* --- Movimento --- */
+  --speed: 1;  /* 2 = animações duas vezes mais lentas; 0.5 = mais rápidas */
+}
+
+/* Ajustes de algumas variáveis só no tema escuro. O primeiro seletor é o
+   mesmo que o daisyUI usa no botão de tema (veja a seção 2). O segundo cobre
+   quem ativar o tema com `data-theme="dark"` no <html>. */
+:root:has(.theme-controller[value="dark"]:checked),
+[data-theme="dark"] {
+  --texture-opacity: 0.2;
+  --board-box-color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+}
+
+
+/* ==========================================================================
+   5. BASE
+   `@layer base` guarda estilos de elementos HTML "crus" (body, h1...). As
+   camadas (layers) definem a prioridade: base < components < utilities.
+   Assim, uma classe utilitária no HTML sempre vence um estilo de componente.
+   ========================================================================== */
+
+@layer base {
+  body {
+    @apply min-h-dvh bg-base-200 text-base-content antialiased;
+    background-image: var(--page-gradient);
+    background-attachment: fixed;
+  }
+
+  /* Textura granulada: um SVG com o filtro `feTurbulence` (ruído) embutido
+     como "data URI" (o arquivo inteiro escrito dentro da URL). O
+     pseudo-elemento `::before` cobre a tela toda sem interferir nos cliques
+     (`pointer-events: none`). `mix-blend-mode` mistura o ruído com o que
+     está embaixo, como uma camada no Photoshop. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: var(--texture-opacity);
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Grade de pontinhos, como papel de caderno quadriculado. Um único
+     gradiente radial minúsculo repetido a cada 24px. `mask-image` faz a
+     grade sumir suavemente nas bordas da tela. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: var(--dot-grid-opacity);
+    background-image: radial-gradient(color-mix(in oklch, var(--color-base-content) 18%, transparent) 1px, transparent 1.5px);
+    background-size: 24px 24px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--color-accent) 60%, transparent);
+  }
+}
+
+
+/* ==========================================================================
+   6. COMPONENTES
+   ========================================================================== */
+
+@layer components {
+
+  /* ---------- Estrutura da página ---------- */
+
+  .app {
+    @apply flex min-h-dvh flex-col;
+  }
+
+  /* Largura do conteúdo, compartilhada pelo cabeçalho e pelo jogo, para
+     que as bordas de ambos fiquem alinhadas em qualquer tela.
+
+     Em telas estreitas, o conteúdo tem a largura do tabuleiro. Em telas
+     largas, tem a largura do tabuleiro + espaço + painel lateral.
+     `calc()` faz contas com medidas de unidades diferentes (aqui, a
+     mistura de vw, vh e rem que existe dentro de --board-size). */
+  .app-container {
+    width: 100%;
+    max-width: var(--board-size);
+    margin-inline: auto;
+
+    @media (width >= 64rem) {
+      max-width: calc(var(--board-size) + var(--game-gap) + var(--panel-width));
+    }
+  }
+
+  /* A barra de vidro ocupa a tela toda, mas o seu conteúdo fica dentro de
+     um `.app-container`, alinhado com o tabuleiro e o painel. */
+  .app-header {
+    @apply sticky top-0 z-10 px-4 py-3 sm:px-8;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .app-header-content {
+    @apply flex items-baseline gap-3;
+  }
+
+  .app-title {
+    @apply text-3xl leading-none tracking-tight;
+    font-family: var(--font-title);
+    font-weight: 800;
+    /* Eixos extras da Fraunces: SOFT arredonda as serifas, WONK entorta
+       algumas letras. Experimente outros valores (SOFT: 0 a 100). */
+    font-variation-settings: "SOFT" 100, "WONK" 1;
+    /* Texto com gradiente: o fundo é pintado só dentro das letras. */
+    background: linear-gradient(120deg, var(--color-primary), var(--color-secondary) 60%, var(--color-accent));
+    background-clip: text;
+    color: transparent;
+  }
+
+  .app-subtitle {
+    @apply badge badge-soft badge-primary font-medium;
+  }
+
+  /* Botão sol/lua. `swap` (daisyUI) mostra `.swap-off` com o checkbox
+     desmarcado e `.swap-on` com ele marcado; `swap-rotate` gira na troca.
+     `ms-auto` (margin-inline-start: auto) empurra o botão para a direita. */
+  .theme-toggle {
+    @apply swap swap-rotate btn btn-circle btn-ghost ms-auto self-center text-xl;
+  }
+
+  .app-main {
+    @apply flex flex-1 items-start justify-center p-4 sm:p-8;
+  }
+
+  .app-footer {
+    @apply px-4 pb-6 text-center text-sm opacity-60;
+
+    & kbd {
+      @apply kbd kbd-sm;
+    }
+  }
+
+  /* ---------- Layout do jogo ----------
+     Em telas estreitas: tabuleiro em cima, painel embaixo.
+     Em telas largas: lado a lado, com as colunas do tamanho exato do
+     tabuleiro e do painel (as mesmas variáveis do `.app-container`). */
+
+  .game {
+    display: grid;
+    gap: var(--game-gap);
+
+    @media (width >= 64rem) {
+      grid-template-columns: var(--board-size) var(--panel-width);
+      align-items: start;
+    }
+  }
+
+  .side-panel {
+    @apply flex flex-col gap-4 rounded-box p-5;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 12px 32px -16px color-mix(in oklch, var(--color-base-content) 25%, transparent);
+  }
+
+  .panel-label {
+    @apply text-xs font-semibold tracking-widest uppercase opacity-60;
+  }
+
+  /* Área de mensagens com altura fixa, para o layout não "pular". */
+  .message-area {
+    @apply flex min-h-14 items-center;
+  }
+
+  /* ---------- Dificuldade ---------- */
+
+  .difficulty-picker {
+    @apply join w-full;
+  }
+
+  .difficulty-option {
+    @apply btn join-item flex-1;
+
+    &.difficulty-option--active {
+      @apply btn-primary;
+    }
+  }
+
+  /* ---------- Mensagens ---------- */
+
+  .message {
+    @apply alert w-full text-sm;
+  }
+  .message--error   { @apply alert-error; }
+  .message--success { @apply alert-success; }
+  .message--loading { @apply alert-soft; }
+
+  .message-close {
+    @apply btn btn-circle btn-ghost btn-xs;
+  }
+
+  .spinner {
+    @apply loading loading-dots loading-sm;
+  }
+
+  /* ---------- Tabuleiro ----------
+     `container-type: inline-size` transforma o tabuleiro num CONTAINER:
+     dentro dele, a unidade `cqi` vale 1% da largura do tabuleiro. Assim o
+     tamanho dos números acompanha o tabuleiro, qualquer que seja a tela
+     (veja `.cell`, abaixo). */
+
+  .board {
+    @apply relative grid grid-cols-9 overflow-hidden;
+    width: var(--board-size);
+    aspect-ratio: 1;
+    container-type: inline-size;
+    border: var(--board-line-thick) solid var(--board-box-color);
+    border-radius: var(--board-radius);
+    background: var(--color-base-100);
+    box-shadow: var(--board-shadow);
+    transition: box-shadow calc(300ms * var(--speed));
+
+    /* `:has()` é o "seletor pai" do CSS: seleciona o tabuleiro SE ele
+       contiver uma casa em conflito. Nenhum código Elm foi necessário. */
+    &:has(.cell--conflict) {
+      box-shadow:
+        var(--board-shadow),
+        0 0 0 6px color-mix(in oklch, var(--cell-conflict) 20%, transparent);
+    }
+  }
+
+  /* Tabuleiro resolvido: uma borda de gradiente cônico girando.
+     O `::after` fica por cima, e `mask` recorta só a moldura (a área do
+     `content-box` é removida pela `mask-composite: exclude`). */
+  .board--solved::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 4px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: conic-gradient(from var(--angle), var(--color-primary), var(--color-secondary), var(--color-accent), var(--color-success), var(--color-primary));
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: spin-angle calc(3s * var(--speed)) linear infinite;
+  }
+
+  /* ---------- Casas ---------- */
+
+  .cell {
+    @apply relative flex items-center justify-center select-none;
+    /* 100cqi = largura do tabuleiro; / 9 = largura de uma casa. */
+    font-family: var(--font-numbers);
+    font-size: calc(100cqi / 9 * 0.52);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    /* Duas camadas de fundo: a cor de estado (seleção, destaques) e, por
+       cima, o tingido de origem. Um gradiente de uma cor só,
+       `linear-gradient(X, X)`, é o truque para usar uma COR como imagem. */
+    --cell-tint: transparent;
+    background-color: var(--cell-bg);
+    background-image: linear-gradient(var(--cell-tint), var(--cell-tint));
+    border-right: var(--board-line-thin) solid var(--board-line-color);
+    border-bottom: var(--board-line-thin) solid var(--board-line-color);
+    transition: background-color calc(120ms * var(--speed)), color calc(120ms * var(--speed));
+    cursor: pointer;
+
+    /* Linhas grossas dos blocos 3x3, calculadas só com CSS.
+       As 81 casas são filhas do tabuleiro, em ordem de leitura.
+       `:nth-child(9n + 3)` = 3ª, 12ª, 21ª... casa = coluna 3 de cada linha. */
+    &:nth-child(9n + 3),
+    &:nth-child(9n + 6) {
+      border-right: var(--board-line-thick) solid var(--board-box-color);
+    }
+    /* `:nth-child(n + 19):nth-child(-n + 27)` = da 19ª à 27ª casa = linha 3. */
+    &:nth-child(n + 19):nth-child(-n + 27),
+    &:nth-child(n + 46):nth-child(-n + 54) {
+      border-bottom: var(--board-line-thick) solid var(--board-box-color);
+    }
+    /* Última coluna e última linha não precisam de borda (o tabuleiro já tem). */
+    &:nth-child(9n)       { border-right: none; }
+    &:nth-child(n + 73)   { border-bottom: none; }
+
+    &:hover {
+      background-color: var(--cell-hover);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: -3px;
+    }
+  }
+
+  /* Modificadores de destaque. A ORDEM importa: com a mesma especificidade,
+     a regra que vem depois vence. Por isso "selecionada" vem por último. */
+  .cell--related    { --cell-bg: var(--cell-related); }
+  .cell--same-value { --cell-bg: var(--cell-same-value); }
+
+  /* Conflito: listras diagonais feitas com `repeating-linear-gradient`. */
+  .cell--conflict {
+    color: var(--cell-conflict);
+    background-image: repeating-linear-gradient(
+      -45deg,
+      color-mix(in oklch, var(--cell-conflict) 16%, transparent) 0 4px,
+      transparent 4px 9px
+    );
+  }
+
+  .cell--selected {
+    --cell-bg: var(--cell-selected);
+    color: var(--color-primary-content);
+    box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--color-primary-content) 35%, transparent);
+
+    &:hover { background-color: var(--cell-bg); }
+
+    /* Na casa selecionada, o tingido de origem sairia "sujo" sobre a cor
+       forte da seleção. Então o desligamos. */
+    &, &.cell--conflict { background-image: none; }
+
+    &.cell--conflict {
+      background-color: var(--cell-conflict);
+      color: var(--color-error-content);
+    }
+  }
+
+  /* Tipos de número */
+
+  /* Os três tipos de número só mudam variáveis: peso, cor e tingido.
+     `:not(A, B)` exclui as casas selecionadas ou em conflito, que têm cores
+     próprias definidas acima. */
+
+  .cell--given {
+    --cell-tint: var(--given-tint);
+    font-weight: var(--given-weight);
+
+    &:not(.cell--selected, .cell--conflict) {
+      color: var(--given-color);
+    }
+  }
+
+  .cell--guess {
+    --cell-tint: var(--guess-tint);
+    font-weight: var(--guess-weight);
+
+    &:not(.cell--selected, .cell--conflict) {
+      color: var(--guess-color);
+    }
+  }
+
+  .cell--revealed {
+    --cell-tint: var(--revealed-tint);
+    font-weight: var(--revealed-weight);
+
+    &:not(.cell--selected, .cell--conflict) {
+      color: var(--revealed-color);
+    }
+  }
+
+  /* As animações rodam quando a classe aparece na casa. Animamos o <span>
+     do número, e não a casa: um `transform` na casa moveria também as
+     bordas, e as linhas da grade "tremeriam". */
+  .cell-value {
+    display: inline-block;
+  }
+  .cell--guess .cell-value {
+    animation: pop calc(220ms * var(--speed)) ease-out;
+  }
+  .cell--revealed .cell-value {
+    animation: reveal calc(500ms * var(--speed)) ease-out;
+  }
+
+  /* ---------- Marcações de canto ----------
+     A casa ganha uma grade 3x3 invisível. O Elm só coloca as marcações em
+     ordem crescente, e é o CSS que decide onde cada uma fica: 1ª marcação no
+     canto superior esquerdo, 2ª no superior direito, etc. `grid-area:
+     linha / coluna` posiciona um item na grade.
+
+         1 5 2
+         7 9 8
+         3 6 4
+  */
+
+  .corner-marks {
+    @apply absolute grid grid-cols-3 grid-rows-3;
+    inset: 7%;
+    font-size: calc(100cqi / 9 * 0.24);
+    font-weight: var(--marks-weight);
+  }
+
+  .corner-mark {
+    @apply flex items-center justify-center opacity-70;
+
+    &:nth-child(1) { grid-area: 1 / 1; }
+    &:nth-child(2) { grid-area: 1 / 3; }
+    &:nth-child(3) { grid-area: 3 / 1; }
+    &:nth-child(4) { grid-area: 3 / 3; }
+    &:nth-child(5) { grid-area: 1 / 2; }
+    &:nth-child(6) { grid-area: 3 / 2; }
+    &:nth-child(7) { grid-area: 2 / 1; }
+    &:nth-child(8) { grid-area: 2 / 3; }
+    &:nth-child(9) { grid-area: 2 / 2; }
+  }
+
+  .corner-mark--highlight {
+    @apply font-bold opacity-100;
+    color: var(--color-accent-content);
+    background: var(--color-accent);
+    border-radius: 999px;
+  }
+
+  /* ---------- Teclado numérico ---------- */
+
+  .number-pad {
+    @apply grid grid-cols-3 gap-2;
+  }
+
+  .number-key {
+    @apply btn btn-lg aspect-square h-auto border-0 text-2xl;
+    font-family: var(--font-numbers);
+    font-weight: 500;
+    background: color-mix(in oklch, var(--color-base-content) 6%, transparent);
+    transition: transform calc(100ms * var(--speed)), background-color calc(150ms * var(--speed));
+
+    &:hover:not(:disabled) {
+      background: color-mix(in oklch, var(--color-primary) 18%, transparent);
+    }
+    &:active:not(:disabled) {
+      transform: scale(0.94);
+    }
+  }
+
+  /* O Elm marca o modo atual com um atributo: <div class="app" data-mode="marks">.
+     Seletores de atributo `[nome="valor"]` permitem estilizar por estado
+     sem criar uma classe nova. No modo de marcação, o número do botão vai
+     para o canto, imitando uma marcação. */
+  [data-mode="marks"] .number-key {
+    @apply items-start justify-start p-2 text-base;
+    background: color-mix(in oklch, var(--color-warning) 25%, transparent);
+  }
+
+  .erase-key {
+    @apply btn btn-lg btn-ghost col-span-1 h-auto min-h-12 text-xl;
+  }
+
+  .mode-toggle {
+    @apply btn btn-lg col-span-2 h-auto min-h-12;
+
+    &.mode-toggle--on {
+      @apply btn-warning;
+    }
+  }
+
+  /* ---------- Ações ---------- */
+
+  .actions {
+    @apply grid grid-cols-3 gap-2;
+  }
+
+  .action-button          { @apply btn; }
+  .action-button--hint    { @apply btn-secondary; }
+  .action-button--solve   { @apply btn-accent; }
+  .action-button--reset   { @apply btn-ghost; }
+}
+
+
+/* ==========================================================================
+   7. ANIMAÇÕES E ACESSIBILIDADE
+   ========================================================================== */
+
+/* `@property` registra uma variável com TIPO. Sem isso, o navegador não
+   sabe interpolar `--angle` e a animação "pularia" de 0 para 360 graus. */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes spin-angle {
+  to { --angle: 360deg; }
+}
+
+@keyframes pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes reveal {
+  0%   { filter: blur(6px); opacity: 0; transform: translateY(20%); }
+  100% { filter: blur(0); opacity: 1; transform: none; }
+}
+
+/* Quem configurou o sistema para "reduzir movimento" não vê animações. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
