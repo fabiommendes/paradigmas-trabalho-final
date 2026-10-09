@@ -169,11 +169,12 @@ em vez de vigiá-los. Em `vite.config.js`, acrescente
 backend ou rodar os testes. O pacote `janus-swi` é compilado contra uma
 versão específica do SWI-Prolog. Se você atualizou o SWI-Prolog (por exemplo,
 da 9 para a 10) depois de instalar o backend, o `uv` continua usando a versão
-antiga, guardada em cache. Recompile o pacote a partir do código-fonte:
+antiga, guardada em cache. Recompile o pacote a partir do código-fonte,
+ignorando o cache:
 
 ```sh
 cd backend
-uv sync --reinstall-package janus-swi --no-binary-package janus-swi
+uv sync --reinstall-package janus-swi --no-binary-package janus-swi --no-cache
 ```
 
 ## Testes
