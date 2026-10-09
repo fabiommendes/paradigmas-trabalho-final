@@ -151,25 +151,10 @@ predicado funcionar no `swipl` vale a pena ligá-lo ao Python.
 
 ## Problemas comuns
 
-**`ENOSPC: System limit for number of file watchers reached`** ao rodar o
-Vite. O Linux limita quantos arquivos podem ser vigiados ao mesmo tempo, e
-editores como o VS Code gastam boa parte desse limite. Dá para aumentar o
-limite:
-
-```sh
-echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/40-inotify.conf
-sudo sysctl --system
-```
-
-Sem `sudo`, outra saída é fazer o Vite verificar os arquivos periodicamente
-em vez de vigiá-los. Em `vite.config.js`, acrescente
-`watch: { usePolling: true }` dentro de `server`.
-
 **`ImportError: libswipl.so.9: cannot open shared object file`** ao subir o
-backend ou rodar os testes. O pacote `janus-swi` é compilado contra uma
-versão específica do SWI-Prolog. Se você atualizou o SWI-Prolog (por exemplo,
-da 9 para a 10) depois de instalar o backend, o `uv` continua usando a versão
-antiga, guardada em cache. Recompile o pacote a partir do código-fonte,
+backend ou rodar os testes. O pacote `janus-swi` é compilado contra uma versão
+específica do SWI-Prolog. Seu sistema pode ter algum problema de compatibilidade
+que necessita de compilação manual. Recompile o pacote a partir do código-fonte,
 ignorando o cache:
 
 ```sh
