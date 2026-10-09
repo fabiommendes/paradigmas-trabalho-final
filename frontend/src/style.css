@@ -496,10 +496,14 @@
      `container-type: inline-size` transforma o tabuleiro num CONTAINER:
      dentro dele, a unidade `cqi` vale 1% da largura do tabuleiro. Assim o
      tamanho dos números acompanha o tabuleiro, qualquer que seja a tela
-     (veja `.cell`, abaixo). */
+     (veja `.cell`, abaixo).
+
+     `grid-rows-9` é tão necessário quanto `grid-cols-9`: sem ele, a altura
+     de cada linha depende do conteúdo, e uma linha vazia fica mais baixa que
+     uma linha com números. Com os dois, as 81 casas têm o mesmo tamanho. */
 
   .board {
-    @apply relative grid grid-cols-9 overflow-hidden;
+    @apply relative grid grid-cols-9 grid-rows-9 overflow-hidden;
     width: var(--board-size);
     aspect-ratio: 1;
     container-type: inline-size;
