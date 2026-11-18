@@ -1,83 +1,122 @@
-"""Testes da API HTTP (pytest).
+"""Testes HTTP da integração Ocaso."""
 
-Usamos o TestClient do FastAPI: ele chama a aplicação diretamente, sem subir
-um servidor nem abrir porta. Cada função `test_*` é um teste; o pytest as
-encontra sozinho.
-
-Rodar: `uv run pytest` (na pasta backend) ou `make test-backend` (na raiz).
-
-As regras do Sudoku são testadas em Prolog (prolog/test_sudoku.pl). Aqui
-conferimos só a "cola": rotas, formato do JSON e códigos de status.
-"""
-
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
 
-# O mesmo puzzle de example_puzzle/1 em sudoku.pl.
-EXAMPLE = [
-    [5, 3, 0, 0, 7, 0, 0, 0, 0],
-    [6, 0, 0, 1, 9, 5, 0, 0, 0],
-    [0, 9, 8, 0, 0, 0, 0, 6, 0],
-    [8, 0, 0, 0, 6, 0, 0, 0, 3],
-    [4, 0, 0, 8, 0, 3, 0, 0, 1],
-    [7, 0, 0, 0, 2, 0, 0, 0, 6],
-    [0, 6, 0, 0, 0, 0, 2, 8, 0],
-    [0, 0, 0, 4, 1, 9, 0, 0, 5],
-    [0, 0, 0, 0, 8, 0, 0, 7, 9],
+PUZZLE = {
+    "size": 5,
+    "suns": ["west", "west", "east", "east", "west"],
+    "rows": [3, 2, 1, 2, 3],
+    "cols": [7, 0, 0, 3, 3],
+    "lakes": [[0, 1], [3, 2], [3, 3], [4, 3]],
+    "givens": [[3, 0, 0], [4, 0, 3], [3, 4, 2], [2, 4, 1], [1, 3, 0]],
+}
+
+SOLUTION = [
+    [2, 0, 0, 3, 0],
+    [2, 0, 0, 0, 0],
+    [0, 0, 0, 0, 1],
+    [0, 0, 0, 0, 2],
+    [3, 0, 0, 0, 0],
 ]
 
 
-def solved_example() -> list[list[int]]:
-    """A solução do puzzle de exemplo, obtida pela própria API."""
-    return client.post("/api/solve", json={"board": EXAMPLE}).json()["board"]
-
-
-def test_solve():
-    response = client.post("/api/solve", json={"board": EXAMPLE})
+@pytest.mark.parametrize(
+    ("difficulty", "size"),
+    [("easy", 5), ("medium", 6), ("hard", 7)],
+)
+def test_generate_returns_puzzle_for_each_level(difficulty: str, size: int):
+    response = client.post("/api/generate", json={"difficulty": difficulty})
     assert response.status_code == 200
-    assert response.json()["board"][0] == [5, 3, 4, 6, 7, 8, 9, 1, 2]
+    puzzle = response.json()
+    assert puzzle["size"] == size
+    assert len(puzzle["suns"]) == len(puzzle["rows"]) == len(puzzle["cols"]) == size
+    assert set(puzzle) == {"size", "suns", "rows", "cols", "lakes", "givens"}
 
 
-def test_solve_without_solution():
-    board = [row[:] for row in EXAMPLE]  # cópia, para não alterar EXAMPLE
-    board[0][2] = 5  # dois 5 na primeira linha
-    response = client.post("/api/solve", json={"board": board})
+def test_generate_rejects_unknown_difficulty():
+    response = client.post("/api/generate", json={"difficulty": "expert"})
     assert response.status_code == 422
 
 
-def test_solve_rejects_malformed_board():
-    # Quem rejeita aqui é o Pydantic, antes de o Prolog ser chamado.
-    response = client.post("/api/solve", json={"board": [[1, 2, 3]]})
-    assert response.status_code == 422
-
-
-def test_generate():
-    response = client.post("/api/generate", json={"difficulty": "easy"})
+def test_solve_returns_towers_for_valid_puzzle():
+    response = client.post("/api/solve", json=PUZZLE)
     assert response.status_code == 200
-    board = response.json()["board"]
-    assert len(board) == 9 and all(len(row) == 9 for row in board)
-    assert 0 in sum(board, [])  # sum(..., []) concatena as linhas: há casa vazia
+    assert response.json() == {"towers": SOLUTION}
 
 
-def test_hint():
-    response = client.post("/api/hint", json={"board": EXAMPLE})
-    assert response.status_code == 200
-    hint = response.json()
-    assert EXAMPLE[hint["row"]][hint["col"]] == 0  # a dica é para uma casa vazia
-
-
-def test_hint_on_complete_board():
-    response = client.post("/api/hint", json={"board": solved_example()})
-    assert response.status_code == 422
-    assert response.json()["detail"] == "O tabuleiro já está completo."
-
-
-def test_hint_on_full_board_with_errors():
-    board = solved_example()
-    board[0][0], board[0][1] = board[0][1], board[0][0]  # troca dois números
-    response = client.post("/api/hint", json={"board": board})
+def test_solve_returns_422_when_a_lake_cannot_be_shadowed():
+    unsolvable = {**PUZZLE, "lakes": [*PUZZLE["lakes"], [0, 0]]}
+    response = client.post("/api/solve", json=unsolvable)
     assert response.status_code == 422
     assert "não tem solução" in response.json()["detail"]
+
+
+def test_solve_rejects_wrong_puzzle_dimensions():
+    malformed = {**PUZZLE, "suns": ["west"]}
+    response = client.post("/api/solve", json=malformed)
+    assert response.status_code == 422
+
+
+def test_hint_returns_tagged_cell_and_explanations():
+    response = client.post(
+        "/api/hint",
+        json={"puzzle": PUZZLE, "placed": []},
+    )
+    assert response.status_code == 200
+    hint = response.json()
+    assert hint["kind"] == "cell"
+    assert 0 <= hint["row"] < PUZZLE["size"]
+    assert 0 <= hint["col"] < PUZZLE["size"]
+    assert hint["value"] in range(4)
+    assert hint["method"] in {"propagation", "search"}
+    assert all("value" in item and "rules" in item for item in hint["excluded"])
+
+
+def test_hint_reports_a_wrong_player_decision():
+    response = client.post(
+        "/api/hint",
+        json={"puzzle": PUZZLE, "placed": [[0, 0, 1]]},
+    )
+    assert response.status_code == 200
+    assert response.json()["kind"] == "wrong"
+    assert response.json()["row"] == 0
+    assert response.json()["col"] == 0
+
+
+def test_hint_reports_complete_board():
+    fixed = {tuple(given[:2]) for given in PUZZLE["givens"]}
+    lakes = {tuple(position) for position in PUZZLE["lakes"]}
+    placed = [
+        [row, col, height]
+        for row, values in enumerate(SOLUTION)
+        for col, height in enumerate(values)
+        if (row, col) not in fixed | lakes
+    ]
+    response = client.post(
+        "/api/hint",
+        json={"puzzle": PUZZLE, "placed": placed},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"kind": "complete"}
+
+
+def test_hint_returns_422_for_an_unsolvable_puzzle():
+    unsolvable = {**PUZZLE, "lakes": [*PUZZLE["lakes"], [0, 0]]}
+    response = client.post(
+        "/api/hint",
+        json={"puzzle": unsolvable, "placed": []},
+    )
+    assert response.status_code == 422
+
+
+def test_hint_rejects_decision_outside_puzzle():
+    response = client.post(
+        "/api/hint",
+        json={"puzzle": PUZZLE, "placed": [[5, 0, 1]]},
+    )
+    assert response.status_code == 422

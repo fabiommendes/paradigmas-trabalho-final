@@ -1,7 +1,7 @@
 [project]
-name = "sudoku-backend"
+name = "ocaso-backend"
 version = "0.1.0"
-description = "API HTTP (FastAPI) que expõe o resolvedor/gerador de Sudoku escrito em Prolog"
+description = "API HTTP do jogo Ocaso, com regras e resolvedor em Prolog"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]>=0.115",
