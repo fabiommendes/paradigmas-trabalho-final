@@ -21,7 +21,7 @@ frontend:           ## só o frontend: http://localhost:5173
 test: test-prolog test-backend
 
 test-prolog:
-	swipl -g run_tests -t halt backend/prolog/test_sudoku.pl
+	swipl -g run_tests -t halt backend/prolog/test_ocaso.pl
 
 test-backend:
 	cd backend && uv run pytest
