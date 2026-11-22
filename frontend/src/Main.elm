@@ -1,40 +1,18 @@
 module Main exposing (main)
 
-{-| Interface gráfica do Sudoku.
-
-Todo programa Elm interativo segue "A Arquitetura Elm" (The Elm Architecture):
-
-  - `Model`: o estado completo da aplicação, num único valor imutável.
-  - `Msg`: tudo o que pode acontecer (cliques, teclas, respostas HTTP...).
-  - `update`: recebe uma `Msg` e o `Model`, devolve o novo `Model` (e os
-    efeitos a executar).
-  - `view`: recebe o `Model` e devolve o `Html`. A tela é uma função do estado.
-
-O ciclo é sempre o mesmo: a `view` desenha o `Model`; o usuário interage e
-gera uma `Msg`; o `update` produz um `Model` novo; a `view` desenha de novo.
-Não há variáveis globais nem alterações "escondidas" do estado.
-
--}
-
 import Api exposing (Difficulty(..))
+import Array
 import Browser
 import Browser.Events
-import Html exposing (Html, aside, button, div, footer, h1, header, input, label, main_, span, text)
-import Html.Attributes exposing (attribute, checked, class, classList, disabled, type_, value)
+import Hint exposing (Hint(..))
+import Html exposing (Html, aside, button, div, footer, h1, header, input, label, main_, p, section, span, text)
+import Html.Attributes exposing (attribute, checked, class, classList, disabled, style, type_, value)
 import Html.Events exposing (onCheck, onClick)
 import Json.Decode as Decode exposing (Decoder)
+import Ocaso exposing (Board, Cell(..), ClueStatus(..), Content(..), Height(..), Position, Puzzle, Source(..), Sun(..))
 import Set exposing (Set)
-import Sudoku exposing (Board, Cell(..), Position)
 
 
-
--- MAIN
-
-
-{-| `Browser.element` cria uma aplicação que controla um elemento da página
-(veja src/main.js). O tipo `Program Flags Model Msg` diz: recebe dados de
-inicialização do tipo `Flags`, o estado é `Model` e as mensagens são `Msg`.
--}
 main : Program Flags Model Msg
 main =
     Browser.element
@@ -45,108 +23,90 @@ main =
         }
 
 
-
--- MODEL
-
-
-{-| FLAGS são dados que o JavaScript entrega ao Elm na inicialização:
-
-    Elm.Main.init({ node: ..., flags: { darkTheme: true } })
-
-O Elm não tem acesso direto a coisas como `localStorage` ou às preferências
-do sistema operacional; quem lê isso é o main.js. O runtime do Elm confere
-se o objeto JS tem o formato deste record. Se não tiver, a aplicação nem
-inicia, e o console mostra o erro.
-
--}
 type alias Flags =
     { darkTheme : Bool
     }
 
 
+type Pending
+    = Idle
+    | Generating
+    | Solving
+    | RequestingHint
+
+
 type alias Model =
-    { board : Board
+    { puzzle : Maybe Puzzle
+    , board : Board
     , selected : Maybe Position
     , difficulty : Difficulty
-    , mode : InputMode
+    , pending : Pending
     , darkTheme : Bool
-    , loading : Bool
     , error : Maybe String
+    , hint : Maybe Hint
+    , history : List Board
     }
 
 
-{-| O que acontece quando o jogador digita um número: ele é colocado na casa,
-ou vira uma marcação de canto (um candidato anotado).
+type Msg
+    = NewGame Difficulty
+    | GotPuzzle (Result String Puzzle)
+    | CellClicked Position
+    | ContentSelected Content
+    | ErasePressed
+    | UndoRequested
+    | MoveSelection Int Int
+    | HintRequested
+    | GotHint (Result String Hint)
+    | SolveRequested
+    | GotSolution (Result String (List (List Int)))
+    | ThemeToggled Bool
+    | ErrorDismissed
 
-Poderíamos usar um `Bool` (`markingMode : Bool`), mas um tipo próprio deixa o
-código mais legível: `mode == CornerMarks` diz mais do que `markingMode ==
-True`, e se um dia surgir um terceiro modo (marcações de centro, cores...),
-basta acrescentar um construtor.
 
--}
-type InputMode
-    = Numbers
-    | CornerMarks
-
-
-{-| Estado inicial. Além do Model, `init` devolve um comando: já começamos
-pedindo um puzzle ao backend.
--}
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( { board = Sudoku.empty
+    ( { puzzle = Nothing
+      , board = Ocaso.empty 5
       , selected = Nothing
       , difficulty = Medium
-      , mode = Numbers
+      , pending = Generating
       , darkTheme = flags.darkTheme
-      , loading = True
       , error = Nothing
+      , hint = Nothing
+      , history = []
       }
     , Api.generate Medium GotPuzzle
     )
-
-
-
--- UPDATE
-
-
-{-| Tudo o que pode acontecer na aplicação.
-
-Repare nas mensagens `Got...`: elas carregam um `Result`. Quem cria essas
-mensagens é o runtime do Elm, quando uma resposta HTTP chega.
-
--}
-type Msg
-    = NewGame Difficulty
-    | GotPuzzle (Result String Board)
-    | CellClicked Position
-    | NumberPressed Int
-    | ErasePressed
-    | ModeToggled
-    | ThemeToggled Bool
-    | MoveSelection Int Int
-    | HintRequested
-    | GotHint (Result String Api.Hint)
-    | SolveRequested
-    | GotSolution (Result String Board)
-    | ResetRequested
-    | ErrorDismissed
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NewGame difficulty ->
-            -- `{ model | campo = valor }` cria uma CÓPIA do record com alguns
-            -- campos alterados. O `model` original não muda.
-            ( { model | difficulty = difficulty, loading = True, error = Nothing }
-            , Api.generate difficulty GotPuzzle
-            )
+            if model.pending /= Idle then
+                ( model, Cmd.none )
 
-        GotPuzzle (Ok board) ->
-            -- Podemos casar padrões "por dentro": aqui tratamos só o caso
-            -- `Ok`, e o caso `Err` fica num ramo separado abaixo.
-            ( { model | board = board, selected = Nothing, loading = False }
+            else
+                ( { model
+                    | difficulty = difficulty
+                    , pending = Generating
+                    , error = Nothing
+                    , hint = Nothing
+                  }
+                , Api.generate difficulty GotPuzzle
+                )
+
+        GotPuzzle (Ok puzzle) ->
+            ( { model
+                | puzzle = Just puzzle
+                , board = Ocaso.boardFromPuzzle puzzle
+                , selected = Nothing
+                , pending = Idle
+                , error = Nothing
+                , hint = Nothing
+                , history = []
+              }
             , Cmd.none
             )
 
@@ -154,160 +114,173 @@ update msg model =
             ( failed error model, Cmd.none )
 
         CellClicked position ->
-            ( { model | selected = Just position }, Cmd.none )
+            let
+                selected =
+                    { model | selected = Just position }
+            in
+            ( editAt position Ocaso.cycleCell selected, Cmd.none )
 
-        NumberPressed n ->
-            case model.mode of
-                Numbers ->
-                    ( updateSelected (placeNumber (Guess n) n) model, Cmd.none )
-
-                CornerMarks ->
-                    ( updateSelected (\position -> Sudoku.toggleMark position n) model
-                    , Cmd.none
-                    )
-
-        ErasePressed ->
-            ( updateSelected (\position -> Sudoku.setCell position Empty) model
+        ContentSelected content ->
+            ( editSelected (\position size board -> Ocaso.setPlayerContent position size content board) model
             , Cmd.none
             )
 
-        ModeToggled ->
-            let
-                newMode =
-                    case model.mode of
-                        Numbers ->
-                            CornerMarks
+        ErasePressed ->
+            ( editSelected Ocaso.clearPlayerCell model, Cmd.none )
 
-                        CornerMarks ->
-                            Numbers
-            in
-            ( { model | mode = newMode }, Cmd.none )
+        UndoRequested ->
+            if model.pending /= Idle then
+                ( model, Cmd.none )
 
-        ThemeToggled dark ->
-            -- A troca de cores em si é feita pelo CSS do daisyUI. Aqui só
-            -- guardamos o estado do checkbox para a `view` continuar
-            -- desenhando-o marcado ou desmarcado corretamente.
-            ( { model | darkTheme = dark }, Cmd.none )
+            else
+                case model.history of
+                    previous :: rest ->
+                        ( { model | board = previous, history = rest, hint = Nothing }
+                        , Cmd.none
+                        )
+
+                    [] ->
+                        ( model, Cmd.none )
 
         MoveSelection dRow dCol ->
             let
-                -- `modBy 9` faz a seleção "dar a volta" nas bordas.
+                size =
+                    model.puzzle
+                        |> Maybe.map .size
+                        |> Maybe.withDefault 5
+
                 move ( row, col ) =
-                    ( modBy 9 (row + dRow), modBy 9 (col + dCol) )
+                    ( modBy size (row + dRow), modBy size (col + dCol) )
             in
-            ( { model | selected = Just (Maybe.withDefault ( 0, 0 ) (Maybe.map move model.selected)) }
+            ( { model
+                | selected =
+                    Just
+                        (model.selected
+                            |> Maybe.map move
+                            |> Maybe.withDefault ( 0, 0 )
+                        )
+              }
             , Cmd.none
             )
 
         HintRequested ->
-            ( { model | loading = True, error = Nothing }
-            , Api.hint model.board GotHint
-            )
+            case ( model.puzzle, model.pending ) of
+                ( Just puzzle, Idle ) ->
+                    ( { model | pending = RequestingHint, error = Nothing, hint = Nothing }
+                    , Api.hint puzzle model.board GotHint
+                    )
 
-        GotHint (Ok { row, col, value }) ->
-            -- Desestruturação de record: extrai os campos direto no padrão.
-            ( { model
-                | board = placeNumber (Revealed value) value ( row, col ) model.board
-                , selected = Just ( row, col )
-                , loading = False
-              }
-            , Cmd.none
-            )
+                _ ->
+                    ( model, Cmd.none )
+
+        GotHint (Ok hint) ->
+            case ( model.puzzle, hint ) of
+                ( Just puzzle, Deduce deduction ) ->
+                    let
+                        position =
+                            ( deduction.row, deduction.col )
+
+                        board =
+                            Ocaso.revealHint position deduction.value puzzle.size model.board
+
+                        updated =
+                            withBoardIfChanged board model
+                    in
+                    ( { updated | selected = Just position, hint = Just hint, pending = Idle }
+                    , Cmd.none
+                    )
+
+                ( _, Mistake mistake ) ->
+                    ( { model
+                        | selected = Just ( mistake.row, mistake.col )
+                        , hint = Just hint
+                        , pending = Idle
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( { model | hint = Just hint, pending = Idle }, Cmd.none )
 
         GotHint (Err error) ->
             ( failed error model, Cmd.none )
 
         SolveRequested ->
-            -- Mandamos só as pistas originais: se o jogador errou algo, isso
-            -- não deve impedir o Prolog de achar a solução.
-            ( { model | loading = True, error = Nothing }
-            , Api.solve (Sudoku.clearGuesses model.board) GotSolution
-            )
+            case ( model.puzzle, model.pending ) of
+                ( Just puzzle, Idle ) ->
+                    ( { model | pending = Solving, error = Nothing, hint = Nothing }
+                    , Api.solve puzzle GotSolution
+                    )
 
-        GotSolution (Ok solution) ->
-            ( { model | board = Sudoku.revealSolution solution model.board, loading = False }
-            , Cmd.none
-            )
+                _ ->
+                    ( model, Cmd.none )
+
+        GotSolution (Ok towers) ->
+            case model.puzzle of
+                Just puzzle ->
+                    let
+                        board =
+                            Ocaso.revealSolution towers puzzle model.board
+                    in
+                    ( withBoardIfChanged board { model | pending = Idle }, Cmd.none )
+
+                Nothing ->
+                    ( { model | pending = Idle }, Cmd.none )
 
         GotSolution (Err error) ->
             ( failed error model, Cmd.none )
 
-        ResetRequested ->
-            ( { model | board = Sudoku.clearGuesses model.board, error = Nothing }, Cmd.none )
+        ThemeToggled dark ->
+            ( { model | darkTheme = dark }, Cmd.none )
 
         ErrorDismissed ->
             ( { model | error = Nothing }, Cmd.none )
 
 
-{-| Funções auxiliares deixam o `update` curto. Esta é usada por todos os
-ramos de erro.
--}
 failed : String -> Model -> Model
 failed error model =
-    { model | loading = False, error = Just error }
+    { model | pending = Idle, error = Just error }
 
 
-{-| Altera o tabuleiro na posição selecionada (se houver alguma).
-
-O primeiro argumento é uma FUNÇÃO: recebe a posição e o tabuleiro, e devolve
-o tabuleiro novo. Funções que recebem funções são chamadas de funções de
-ordem superior. Assim, a mesma `updateSelected` serve para colocar número,
-apagar e marcar; quem chama só diz O QUE fazer com a casa.
-
--}
-updateSelected : (Position -> Board -> Board) -> Model -> Model
-updateSelected change model =
+editSelected : (Position -> Int -> Board -> Board) -> Model -> Model
+editSelected change model =
     case model.selected of
         Just position ->
-            { model | board = change position model.board }
+            editAt position change model
 
         Nothing ->
             model
 
 
-{-| Coloca um número numa casa e apaga essa marcação dos vizinhos.
+editAt : Position -> (Position -> Int -> Board -> Board) -> Model -> Model
+editAt position change model =
+    case ( model.puzzle, model.pending ) of
+        ( Just puzzle, Idle ) ->
+            withBoardIfChanged (change position puzzle.size model.board) model
 
-Se a casa é uma pista original, nada muda: nem a casa, nem as marcações dos
-vizinhos. (Sem esse `if`, `setCell` recusaria a alteração, mas
-`removeMarkFromPeers` rodaria mesmo assim e apagaria marcações à toa.)
+        _ ->
+            model
 
-Repare que a assinatura termina em `Position -> Board -> Board`. Por isso
-`placeNumber (Guess n) n` (só com dois argumentos) já é uma função do tipo
-que `updateSelected` espera. Isso é APLICAÇÃO PARCIAL: em Elm, toda função
-de vários argumentos pode receber só os primeiros e devolver uma função que
-espera o resto.
 
--}
-placeNumber : Cell -> Int -> Position -> Board -> Board
-placeNumber cell n position board =
-    if Sudoku.isGiven (Sudoku.cellAt position board) then
-        board
+withBoardIfChanged : Board -> Model -> Model
+withBoardIfChanged board model =
+    if Array.toList board == Array.toList model.board then
+        model
 
     else
-        board
-            |> Sudoku.setCell position cell
-            |> Sudoku.removeMarkFromPeers position n
+        case model.puzzle of
+            Just _ ->
+                { model | board = board, history = model.board :: model.history, hint = Nothing }
+
+            Nothing ->
+                model
 
 
-
--- SUBSCRIPTIONS
-
-
-{-| Subscriptions são fontes de eventos externos que queremos escutar
-continuamente. Aqui: as teclas pressionadas em qualquer lugar da página.
--}
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Browser.Events.onKeyDown keyDecoder
 
 
-{-| Eventos do navegador chegam como JSON; lemos o campo `key` do evento.
-
-Truque útil: para teclas que não nos interessam, o decoder FALHA
-(`Decode.fail`). Um decoder que falha simplesmente não gera mensagem, então o
-`update` nunca fica sabendo dessas teclas.
-
--}
 keyDecoder : Decoder Msg
 keyDecoder =
     Decode.field "key" Decode.string
@@ -335,103 +308,77 @@ keyToMsg key =
         "Delete" ->
             Decode.succeed ErasePressed
 
-        "n" ->
-            Decode.succeed ModeToggled
+        "." ->
+            Decode.succeed (ContentSelected Ground)
 
-        "N" ->
-            Decode.succeed ModeToggled
+        "z" ->
+            Decode.succeed UndoRequested
+
+        "Z" ->
+            Decode.succeed UndoRequested
 
         _ ->
             case String.toInt key of
-                Just n ->
-                    -- A tecla "0" também apaga a casa.
-                    if n >= 1 && n <= 9 then
-                        Decode.succeed (NumberPressed n)
+                Just 0 ->
+                    Decode.succeed (ContentSelected Ground)
 
-                    else
-                        Decode.succeed ErasePressed
+                Just value ->
+                    Ocaso.heightFromInt value
+                        |> Maybe.map (Tower >> ContentSelected >> Decode.succeed)
+                        |> Maybe.withDefault (Decode.fail "tecla ignorada")
 
                 Nothing ->
                     Decode.fail "tecla ignorada"
 
 
-
--- VIEW
---
--- As funções de HTML do Elm seguem sempre o formato:
---
---     elemento [ atributos ] [ filhos ]
---
--- As classes usadas aqui são SEMÂNTICAS: dizem o que o elemento é
--- ("board", "cell", "number-key"), e não como ele aparece. A aparência fica
--- toda em src/style.css. Para mudar o visual, quase nunca é preciso mexer
--- neste arquivo.
---
--- Os modificadores (classes com `--`, como "cell--selected") são ligados e
--- desligados com `classList`, que recebe pares (classe, condição).
-
-
 view : Model -> Html Msg
 view model =
-    div
-        [ class "app"
-
-        -- Um atributo `data-*` guarda um estado que o CSS pode ler com o
-        -- seletor [data-mode="marks"]. Veja `.number-key` no style.css.
-        , attribute "data-mode"
-            (case model.mode of
-                Numbers ->
-                    "numbers"
-
-                CornerMarks ->
-                    "marks"
-            )
-        ]
+    div [ class "app" ]
         [ header [ class "app-header" ]
             [ div [ class "app-container app-header-content" ]
-                [ h1 [ class "app-title" ] [ text "Sudoku" ]
-                , span [ class "app-subtitle" ] [ text "Prolog + Elm" ]
+                [ h1 [ class "app-title" ] [ text "Ocaso" ]
+                , span [ class "app-subtitle" ] [ text "Torres e sombras ao entardecer" ]
                 , viewThemeToggle model
                 ]
             ]
         , main_ [ class "app-main" ]
-            -- Um elemento pode ter várias classes: "app-container" define a
-            -- largura (a mesma do cabeçalho) e "game" define o layout interno.
             [ div [ class "app-container game" ]
                 [ viewBoard model
                 , aside [ class "side-panel" ]
-                    [ span [ class "panel-label" ] [ text "Novo jogo" ]
+                    [ span [ class "panel-label" ] [ text "Novo puzzle" ]
                     , viewDifficulty model
-                    , div [ class "message-area" ] [ viewMessages model ]
-                    , span [ class "panel-label" ] [ text "Números" ]
+                    , div [ class "message-area" ] [ viewStatus model ]
+                    , span [ class "panel-label" ] [ text "Jogadas" ]
                     , viewNumberPad model
-                    , span [ class "panel-label" ] [ text "Ajuda" ]
+                    , span [ class "panel-label" ] [ text "Ações" ]
                     , viewActions model
+                    , span [ class "panel-label" ] [ text "Explicação da dica" ]
+                    , viewHint model
+                    , viewLegend
                     ]
                 ]
             ]
         , footer [ class "app-footer" ]
-            [ text "Teclado: "
-            , kbd [] [ text "1–9" ]
-            , text " coloca, "
-            , kbd [] [ text "setas" ]
-            , text " movem, "
+            [ text "Teclas: "
+            , kbd [] [ text "1–3" ]
+            , text " torre, "
+            , kbd [] [ text "0 / ." ]
+            , text " chão, "
             , kbd [] [ text "⌫" ]
-            , text " apaga, "
-            , kbd [] [ text "N" ]
-            , text " liga as marcações de canto."
+            , text " apagar, "
+            , kbd [] [ text "Z" ]
+            , text " desfazer, "
+            , kbd [] [ text "setas" ]
+            , text " mover."
             ]
         ]
 
 
-{-| Botão sol/lua para trocar entre os temas claro e escuro.
+kbd : List (Html.Attribute msg) -> List (Html msg) -> Html msg
+kbd =
+    Html.node "kbd"
 
-É o componente `theme-controller` do daisyUI: um checkbox cujo `value` é o
-nome do tema. Quando está marcado, o CSS aplica o tema `dark`
-(veja a seção 2 do style.css). O `<label>` envolve o checkbox, então clicar
-em qualquer parte dele (no ícone, por exemplo) marca ou desmarca a caixa.
 
--}
 viewThemeToggle : Model -> Html Msg
 viewThemeToggle model =
     label [ class "theme-toggle", attribute "aria-label" "Alternar tema claro/escuro" ]
@@ -440,8 +387,6 @@ viewThemeToggle model =
             , class "theme-controller"
             , value "dark"
             , checked model.darkTheme
-
-            -- `onCheck` entrega o novo estado (True/False) do checkbox.
             , onCheck ThemeToggled
             ]
             []
@@ -450,205 +395,374 @@ viewThemeToggle model =
         ]
 
 
-{-| `Html.node` cria um elemento com qualquer nome de tag. O pacote elm/html
-não tem uma função `kbd` pronta, então definimos a nossa.
--}
-kbd : List (Html.Attribute msg) -> List (Html msg) -> Html msg
-kbd =
-    Html.node "kbd"
-
-
 viewDifficulty : Model -> Html Msg
 viewDifficulty model =
     let
-        option difficulty =
+        option difficulty sizeLabel =
             button
                 [ class "difficulty-option"
                 , classList [ ( "difficulty-option--active", difficulty == model.difficulty ) ]
-                , disabled model.loading
+                , disabled (model.pending /= Idle)
                 , onClick (NewGame difficulty)
                 ]
-                [ text (Api.difficultyLabel difficulty) ]
+                [ text (Api.difficultyLabel difficulty ++ " · " ++ sizeLabel) ]
     in
-    div [ class "difficulty-picker" ] (List.map option [ Easy, Medium, Hard ])
+    div [ class "difficulty-picker" ]
+        [ option Easy "5×5"
+        , option Medium "6×6"
+        , option Hard "7×7"
+        ]
 
 
-viewMessages : Model -> Html Msg
-viewMessages model =
-    case ( model.error, model.loading ) of
-        -- Casamento de padrões numa tupla: tratamos combinações de dois
-        -- valores de uma só vez.
-        ( Just error, _ ) ->
+viewStatus : Model -> Html Msg
+viewStatus model =
+    case ( model.error, model.pending, model.puzzle ) of
+        ( Just error, _, _ ) ->
             div [ class "message message--error" ]
                 [ span [] [ text error ]
-                , button [ class "message-close", onClick ErrorDismissed ] [ text "✕" ]
+                , button [ class "message-close", onClick ErrorDismissed ] [ text "×" ]
                 ]
 
-        ( Nothing, True ) ->
-            div [ class "message message--loading" ]
-                [ span [ class "spinner" ] []
-                , span [] [ text "O Prolog está pensando..." ]
-                ]
+        ( Nothing, Generating, _ ) ->
+            loadingMessage "O Prolog está gerando um puzzle..."
 
-        ( Nothing, False ) ->
-            if Sudoku.isComplete model.board then
-                div [ class "message message--success" ]
-                    [ text (completionMessage model.board) ]
+        ( Nothing, Solving, _ ) ->
+            loadingMessage "O Prolog está resolvendo..."
+
+        ( Nothing, RequestingHint, _ ) ->
+            loadingMessage "O Prolog está analisando as jogadas..."
+
+        ( Nothing, Idle, Just puzzle ) ->
+            if Ocaso.isSolved puzzle model.board then
+                div [ class "message message--success" ] [ text "Puzzle resolvido!" ]
 
             else
                 text ""
 
+        ( Nothing, Idle, Nothing ) ->
+            text ""
 
-completionMessage : Board -> String
-completionMessage board =
-    let
-        revealed =
-            Sudoku.positions
-                |> List.any (\pos -> Sudoku.isRevealed (Sudoku.cellAt pos board))
-    in
-    if revealed then
-        "Resolvido (com ajuda do Prolog)."
 
-    else
-        "Parabéns! Você resolveu o puzzle!"
+loadingMessage : String -> Html Msg
+loadingMessage message =
+    div [ class "message message--loading" ]
+        [ span [ class "spinner" ] []
+        , span [] [ text message ]
+        ]
 
 
 viewBoard : Model -> Html Msg
 viewBoard model =
+    case model.puzzle of
+        Nothing ->
+            div [ class "board-loading" ] [ text "Preparando o tabuleiro..." ]
+
+        Just puzzle ->
+            let
+                columnTemplate =
+                    "repeat(" ++ String.fromInt puzzle.size ++ ", minmax(0, 1fr))"
+            in
+            section [ class "board-area", attribute "aria-label" "Tabuleiro do Ocaso" ]
+                [ div [ class "column-clues-row" ]
+                    [ div [ class "annotation-spacer" ] []
+                    , div
+                        [ class "board-grid board-grid--columns"
+                        , style "grid-template-columns" columnTemplate
+                        ]
+                        (List.range 0 (puzzle.size - 1)
+                            |> List.map (viewColumnClue model puzzle)
+                        )
+                    , div [ class "annotation-spacer" ] []
+                    ]
+                , div [ class "board-rows" ]
+                    (List.range 0 (puzzle.size - 1)
+                        |> List.map (viewRow model puzzle columnTemplate)
+                    )
+                ]
+
+
+viewColumnClue : Model -> Puzzle -> Int -> Html Msg
+viewColumnClue model puzzle col =
     let
-        conflicts =
-            Sudoku.conflicts model.board
+        clue =
+            puzzle.cols
+                |> List.drop col
+                |> List.head
+                |> Maybe.withDefault 0
     in
     div
-        [ class "board"
-        , classList [ ( "board--solved", Sudoku.isComplete model.board ) ]
+        [ class "clue"
+        , class (clueClass (Ocaso.colStatus puzzle model.board col))
+        , attribute "aria-label" ("Soma da coluna " ++ String.fromInt (col + 1))
         ]
-        (List.map (viewCell model conflicts) Sudoku.positions)
+        [ text (String.fromInt clue) ]
 
 
-viewCell : Model -> Set Position -> Position -> Html Msg
-viewCell model conflicts (( row, col ) as position) =
+viewRow : Model -> Puzzle -> String -> Int -> Html Msg
+viewRow model puzzle columnTemplate row =
+    let
+        sun =
+            puzzle.suns
+                |> List.drop row
+                |> List.head
+                |> Maybe.withDefault West
+
+        clue =
+            puzzle.rows
+                |> List.drop row
+                |> List.head
+                |> Maybe.withDefault 0
+
+        sunMarker =
+            span
+                [ class "sun-marker"
+                , attribute "aria-label"
+                    (case sun of
+                        West ->
+                            "Sol a oeste"
+
+                        East ->
+                            "Sol a leste"
+                    )
+                ]
+                [ text "☀" ]
+
+        rowClue =
+            span
+                [ class "clue"
+                , class (clueClass (Ocaso.rowStatus puzzle model.board row))
+                , attribute "aria-label" ("Casas sombreadas na linha " ++ String.fromInt (row + 1))
+                ]
+                [ text (String.fromInt clue) ]
+
+        cells =
+            div
+                [ class "board-grid board-grid--row"
+                , style "grid-template-columns" columnTemplate
+                , style "height" ("calc(var(--board-size) / " ++ String.fromInt puzzle.size ++ ")")
+                ]
+                (List.range 0 (puzzle.size - 1)
+                    |> List.map
+                        (\col ->
+                            viewCell model puzzle ( row, col )
+                        )
+                )
+
+        leftAnnotation =
+            case sun of
+                West ->
+                    sunMarker
+
+                East ->
+                    rowClue
+
+        rightAnnotation =
+            case sun of
+                West ->
+                    rowClue
+
+                East ->
+                    sunMarker
+    in
+    div [ class "board-row" ]
+        [ div [ class "row-annotation" ] [ leftAnnotation ]
+        , cells
+        , div [ class "row-annotation" ] [ rightAnnotation ]
+        ]
+
+
+viewCell : Model -> Puzzle -> Position -> Html Msg
+viewCell model puzzle (( row, col ) as position) =
     let
         cell =
-            Sudoku.cellAt position model.board
+            Ocaso.cellAt position puzzle.size model.board
 
-        value =
-            Sudoku.valueOf cell
+        shaded =
+            Ocaso.shadowAt puzzle model.board position
 
-        -- A casa está na mesma linha, coluna ou bloco da selecionada?
-        isRelated =
-            case model.selected of
-                Just (( selRow, selCol ) as sel) ->
-                    selRow == row || selCol == col || Sudoku.sameBox sel position
+        errors =
+            Set.member position (Ocaso.towersInShadow puzzle model.board)
+                || Set.member position (Ocaso.lakesInSun puzzle model.board)
 
-                Nothing ->
-                    False
-
-        -- Número da casa selecionada. `Maybe.andThen` encadeia dois passos
-        -- que podem dar Nothing: não haver seleção, ou a casa estar vazia.
-        selectedValue =
-            model.selected
-                |> Maybe.andThen (\sel -> Sudoku.valueOf (Sudoku.cellAt sel model.board))
+        labelText =
+            "Linha "
+                ++ String.fromInt (row + 1)
+                ++ ", coluna "
+                ++ String.fromInt (col + 1)
+                ++ ": "
+                ++ cellDescription cell
     in
     button
         [ class "cell"
         , classList
             [ ( "cell--selected", model.selected == Just position )
-            , ( "cell--related", isRelated )
-            , ( "cell--same-value", value /= Nothing && value == selectedValue )
-            , ( "cell--conflict", Set.member position conflicts )
-            , ( "cell--given", Sudoku.isGiven cell )
-            , ( "cell--guess", Sudoku.isGuess cell )
-            , ( "cell--revealed", Sudoku.isRevealed cell )
+            , ( "cell--shadow", shaded )
+            , ( "cell--lake", cell == Lake )
+            , ( "cell--error", errors )
+            , ( "cell--given", sourceIs Given cell )
+            , ( "cell--player", sourceIs Player cell )
+            , ( "cell--prolog", sourceIs Prolog cell )
             ]
-
-        -- Leitores de tela anunciam este texto (acessibilidade). As linhas
-        -- grossas dos blocos 3x3 são desenhadas pelo CSS com :nth-child,
-        -- então o Elm não precisa passar linha e coluna para o estilo.
-        , attribute "aria-label"
-            ("Linha " ++ String.fromInt (row + 1) ++ ", coluna " ++ String.fromInt (col + 1))
+        , attribute "aria-label" labelText
         , onClick (CellClicked position)
         ]
-        [ case cell of
-            Marks marks ->
-                viewCornerMarks selectedValue marks
-
-            _ ->
-                -- O número fica num <span> próprio para que as animações do
-                -- CSS movam só o número, e não a casa com suas bordas.
-                span [ class "cell-value" ]
-                    [ text (Maybe.map String.fromInt value |> Maybe.withDefault "") ]
-        ]
+        [ viewCellContent cell ]
 
 
-{-| Desenha as marcações de canto de uma casa.
+viewCellContent : Cell -> Html Msg
+viewCellContent cell =
+    case cell of
+        Lake ->
+            span [ class "lake-mark", attribute "aria-hidden" "true" ] [ text "≈" ]
 
-O Elm só coloca as marcações em ordem crescente (`Set.toList` já devolve os
-elementos ordenados). Quem decide em que canto cada uma aparece é o CSS, com
-`:nth-child` (veja `.corner-mark` no style.css). Cada linguagem faz o que
-faz melhor: o Elm cuida dos dados e o CSS cuida do posicionamento.
+        Undecided ->
+            span [ class "ground-mark" ] [ text "·" ]
 
--}
-viewCornerMarks : Maybe Int -> Set Int -> Html Msg
-viewCornerMarks selectedValue marks =
-    let
-        viewMark n =
-            span
-                [ class "corner-mark"
-                , classList [ ( "corner-mark--highlight", Just n == selectedValue ) ]
+        Decided _ Ground ->
+            span [ class "ground-mark" ] [ text "—" ]
+
+        Decided _ (Tower height) ->
+            let
+                count =
+                    case height of
+                        Low ->
+                            1
+
+                        Mid ->
+                            2
+
+                        High ->
+                            3
+            in
+            div
+                [ class "tower"
+                , class ("tower--" ++ String.fromInt count)
+                , attribute "aria-label" ("Torre de altura " ++ String.fromInt count)
                 ]
-                [ text (String.fromInt n) ]
-    in
-    div [ class "corner-marks" ] (List.map viewMark (Set.toList marks))
+                (List.repeat count (span [ class "tower-block" ] []))
+
+
+sourceIs : Source -> Cell -> Bool
+sourceIs source cell =
+    case cell of
+        Decided cellSource _ ->
+            cellSource == source
+
+        _ ->
+            False
+
+
+cellDescription : Cell -> String
+cellDescription cell =
+    case cell of
+        Lake ->
+            "lago"
+
+        Undecided ->
+            "não decidida"
+
+        Decided _ Ground ->
+            "chão"
+
+        Decided _ (Tower height) ->
+            "torre de altura " ++ String.fromInt (heightNumber height)
+
+
+heightNumber : Height -> Int
+heightNumber height =
+    case height of
+        Low ->
+            1
+
+        Mid ->
+            2
+
+        High ->
+            3
+
+
+clueClass : ClueStatus -> String
+clueClass status =
+    case status of
+        Below ->
+            "clue--below"
+
+        Exact ->
+            "clue--exact"
+
+        Above ->
+            "clue--above"
 
 
 viewNumberPad : Model -> Html Msg
 viewNumberPad model =
     let
-        marking =
-            model.mode == CornerMarks
-
-        noSelection =
-            model.selected == Nothing
-
-        numberKey n =
+        numberButton height label =
             button
                 [ class "number-key"
-                , disabled noSelection
-                , onClick (NumberPressed n)
+                , disabled (model.pending /= Idle || model.selected == Nothing)
+                , onClick (ContentSelected (Tower height))
                 ]
-                [ text (String.fromInt n) ]
+                [ text label ]
     in
     div [ class "number-pad" ]
-        (List.map numberKey (List.range 1 9)
-            ++ [ button [ class "erase-key", disabled noSelection, onClick ErasePressed ] [ text "⌫" ]
-               , button
-                    [ class "mode-toggle"
-                    , classList [ ( "mode-toggle--on", marking ) ]
-                    , onClick ModeToggled
-                    ]
-                    [ text
-                        (if marking then
-                            "✎ Marcando"
-
-                         else
-                            "✎ Marcar"
-                        )
-                    ]
-               ]
-        )
+        [ numberButton Low "1"
+        , numberButton Mid "2"
+        , numberButton High "3"
+        , button
+            [ class "number-key number-key--ground"
+            , disabled (model.pending /= Idle || model.selected == Nothing)
+            , onClick (ContentSelected Ground)
+            ]
+            [ text "Chão" ]
+        , button
+            [ class "erase-key"
+            , disabled (model.pending /= Idle || model.selected == Nothing)
+            , onClick ErasePressed
+            ]
+            [ text "⌫ Apagar" ]
+        ]
 
 
 viewActions : Model -> Html Msg
 viewActions model =
-    let
-        -- Com o tabuleiro completo não há o que revelar: os botões de ajuda
-        -- ficam desativados, e a mensagem de parabéns continua na tela.
-        nothingToReveal =
-            model.loading || Sudoku.isComplete model.board
-    in
     div [ class "actions" ]
-        [ button [ class "action-button action-button--hint", disabled nothingToReveal, onClick HintRequested ] [ text "Dica" ]
-        , button [ class "action-button action-button--solve", disabled nothingToReveal, onClick SolveRequested ] [ text "Resolver" ]
-        , button [ class "action-button action-button--reset", disabled model.loading, onClick ResetRequested ] [ text "Limpar" ]
+        [ button
+            [ class "action-button action-button--hint"
+            , disabled (model.pending /= Idle || model.puzzle == Nothing)
+            , onClick HintRequested
+            ]
+            [ text "Pedir dica" ]
+        , button
+            [ class "action-button action-button--solve"
+            , disabled (model.pending /= Idle || model.puzzle == Nothing)
+            , onClick SolveRequested
+            ]
+            [ text "Resolver" ]
+        , button
+            [ class "action-button action-button--undo"
+            , disabled (model.pending /= Idle || List.isEmpty model.history)
+            , onClick UndoRequested
+            ]
+            [ text "Desfazer (Z)" ]
+        ]
+
+
+viewHint : Model -> Html Msg
+viewHint model =
+    case model.hint of
+        Just hint ->
+            p [ class "hint-explanation" ] [ text (Hint.explanation hint) ]
+
+        Nothing ->
+            p [ class "hint-explanation hint-explanation--empty" ]
+                [ text "Peça uma dica para ver uma dedução e as regras que a justificam." ]
+
+
+viewLegend : Html Msg
+viewLegend =
+    div [ class "legend" ]
+        [ span [] [ text "≈ Lago" ]
+        , span [] [ text "Fundo âmbar: sombra" ]
+        , span [] [ text "Blocos: torre (altura 1–3)" ]
         ]
