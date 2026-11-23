@@ -1,341 +1,313 @@
-<!--
-  TEMPLATE DO RELATÓRIO DE ENTREGA: Paradigmas de Programação
-
-  Como usar:
-  - Copie este arquivo para a raiz do repositório do grupo, com o nome
-    RELATORIO.md, e preencha todas as seções.
-  - Os textos entre <!- - e - -> (como este) são instruções. Eles não
-    aparecem quando o arquivo é visualizado, mas APAGUE-OS antes de entregar.
-  - Troque tudo o que estiver entre [colchetes].
-  - Seja direto. Frases curtas e listas valem mais que parágrafos longos.
-    Um relatório típico cabe em 4 a 8 páginas.
-  - O relatório e o código são avaliados juntos. Sempre que possível,
-    aponte para o código (arquivo e linha) em vez de descrevê-lo. Os
-    critérios de avaliação estão em AVALIACAO.md.
-  - ANTES DE ENTREGAR, rode o validador na raiz do repositório:
-
-        uv run scripts/validar_entrega.py
-
-    Ele confere a FORMA do relatório (comentários apagados, colchetes
-    preenchidos, tabelas bem formadas, seções presentes, arquivos
-    existentes), não o conteúdo. Corrija todos os ERROS apontados.
--->
-
-# [Nome do projeto]
+# Ocaso
 
 ## 1. Identificação
 
-<!--
-  Os grupos têm de 3 a 7 pessoas (5, em média). A tabela abaixo tem 5
-  linhas: adicione ou remova linhas conforme o tamanho do seu grupo, aqui e
-  na seção 10. Os grupos podem misturar alunos das turmas das 14h e das 16h:
-  indique a turma de CADA integrante.
--->
-
 | Nome completo | Matrícula | Turma (14h/16h) | Usuário GitHub |
 |---------------|-----------|-----------------|----------------|
-| [Nome]        | [000000]  | [14h]           | [@usuario]     |
-| [Nome]        | [000000]  | [16h]           | [@usuario]     |
-| [Nome]        | [000000]  | [14h]           | [@usuario]     |
-| [Nome]        | [000000]  | [16h]           | [@usuario]     |
-| [Nome]        | [000000]  | [14h]           | [@usuario]     |
+| Davi Mesquita | 222006650 | 16h | @davimesquit |
+| Anna Clara Brandão | 222006534 | 16h | @annacbrandao |
+| Renan Pariz | 222006392 | 16h | @renanpariiz |
 
-- **Nome do projeto:** [o mesmo do título acima]
-- **Nome do grupo:** [um nome criativo, que não se repita na turma]
-  <!--
-    O nome do grupo identifica vocês nas planilhas de notas e na chamada
-    para a apresentação. Não dá para validar se é único, então caprichem:
-    "Grupo 3" vai colidir com o "Grupo 3" da outra turma.
-  -->
-- **Repositório:** [https://github.com/...]
-- **Commit ou tag entregue:** [`a1b2c3d` ou `v1.0`]
-  <!--
-    O avaliador vai olhar exatamente esta versão. Para criar uma tag:
-      git tag v1.0 && git push origin v1.0
-  -->
-- **Ponto de partida:** [template do Sudoku com ajustes | variante do Sudoku | outro jogo conhecido | remix original | jogo inventado]
-  <!--
-    Escolha UMA faixa. Ela define o ajuste de escopo da nota do grupo
-    (AVALIACAO.md, seção 1.5). O professor confirma a faixa na apresentação.
-  -->
-- **Slides da apresentação oral:** [`docs/apresentacao.pdf` | link externo | não há]
-  <!--
-    No final do semestre, cada grupo faz uma apresentação oral de 15
-    minutos. Slides são opcionais; se o grupo usar, coloque o arquivo no
-    repositório (de preferência em PDF) e indique o caminho aqui.
-  -->
+- **Nome do projeto:** Ocaso
+- **Nome do grupo:** Grupo 5
+- **Repositório:** https://github.com/renanpariiz/paradigmas-trabalho-final-grupo5-Ocaso
+- **Commit ou tag entregue:** `working-tree`
+- **Ponto de partida:** jogo inventado
+- **Slides da apresentação oral:** não há
+
+O identificador `working-tree` indica que esta versão ainda não foi commitada.
+Deve ser substituído pelo hash do commit de entrega depois da revisão do grupo.
 
 ## 2. Resumo
 
-<!--
-  De 3 a 5 linhas: o que o sistema faz, para quem, e qual problema o
-  Prolog resolve nele. Quem ler só esta seção deve entender o projeto.
--->
+Ocaso é um jogo de lógica sobre torres, lagos e sombras em um tabuleiro de
+5×5, 6×6 ou 7×7. O jogador usa as pistas de linhas e colunas para encontrar
+as torres. O Prolog modela as restrições, gera puzzles de solução única,
+resolve-os e explica dicas; a interface Elm mostra o tabuleiro e acompanha
+as jogadas.
 
-[Resumo do projeto.]
-
-![Captura de tela do sistema](docs/captura.png)
-<!-- Uma ou duas capturas de tela da interface. Crie a pasta docs/ se precisar. -->
+![Captura de tela do sistema](docs/captura.jpg)
 
 ## 3. Como executar
 
-<!--
-  Teste estas instruções numa máquina "limpa" (ou peça a um colega de
-  outro grupo). Se o avaliador não conseguir rodar o sistema, o resto do
-  trabalho não pode ser verificado.
--->
+**Requisitos:**
 
-**Requisitos** (com as versões que o grupo usou):
-
-- SWI-Prolog [9.x]
-- Node.js [2x.x]
-- [uv / Python 3.x, se usar]
+- SWI-Prolog 9.2 ou mais novo;
+- Python 3.11 ou mais novo e `uv`;
+- Node.js 20 ou mais novo e `npm`;
+- `make`.
 
 **Instalação e execução:**
 
 ```sh
-[comandos exatos, na ordem]
+make install
+make dev
 ```
 
-**Testes:**
+Abra <http://localhost:5173>. A API fica documentada em
+<http://localhost:8000/docs>.
+
+**Testes e verificações:**
 
 ```sh
-[comando para rodar os testes, se houver]
+make test
+cd frontend
+npx elm-format --yes src/
+npx elm make src/Main.elm --output=/dev/null
+npm run build
 ```
 
-**Testado em:** [Linux / Windows / macOS, navegador]
+**Testado em:**
+
+- macOS 27 (Apple Silicon), SWI-Prolog 11.0.0, Python 3.15 e Node.js 22.23:
+  `make test` passou (22 testes plunit e 12 testes da API, com o Prolog
+  real); a formatação Elm, `elm make` e `npm run build` passaram; o jogo foi
+  usado no navegador com o backend real.
+- Windows, Node.js 22.13 e Python 3.14: a compilação Elm e o build Vite
+  passaram; a interface foi exercitada com respostas HTTP simuladas, porque o
+  SWI-Prolog não estava instalado nessa máquina.
 
 ## 4. Arquitetura
 
-<!--
-  Um diagrama simples (pode ser em texto) mostrando as partes do sistema e
-  como elas se comunicam. Diga em uma frase a responsabilidade de cada parte.
--->
-
-```
-[Elm] --HTTP/JSON--> [Python] --janus--> [Prolog]
+```text
+Elm (navegador) --HTTP/JSON--> FastAPI (Python) --janus--> SWI-Prolog
 ```
 
-| Parte  | Responsabilidade | Arquivos principais |
-|--------|------------------|---------------------|
-| Prolog | [...]            | [`backend/prolog/...`] |
-| Elm    | [...]            | [`frontend/src/...`]   |
-| Python | [só integração]  | [`backend/app/...`]    |
+| Parte | Responsabilidade | Arquivos principais |
+|-------|------------------|---------------------|
+| Prolog | Modelar regras, buscar soluções, gerar puzzles e explicar dicas | [`backend/prolog/ocaso.pl:108`](backend/prolog/ocaso.pl) |
+| Python | Validar JSON e encaminhar chamadas para Prolog, sem regras do jogo | [`backend/app/prolog.py:16`](backend/app/prolog.py), [`backend/app/main.py:19`](backend/app/main.py) |
+| Elm | Domínio puro, textos das dicas, decodificação JSON, estado da aplicação e interface | [`frontend/src/Ocaso.elm:46`](frontend/src/Ocaso.elm), [`frontend/src/Hint.elm:52`](frontend/src/Hint.elm), [`frontend/src/Api.elm:68`](frontend/src/Api.elm), [`frontend/src/Main.elm:76`](frontend/src/Main.elm) |
 
 ## 5. Parte em Prolog
 
 ### 5.1 Predicados principais
 
-<!--
-  Os predicados mais importantes, com o local no código. Use a notação
-  nome/aridade e indique entradas (+) e saídas (-), como na documentação
-  do SWI-Prolog.
--->
-
 | Predicado | Local | O que faz |
 |-----------|-------|-----------|
-| [`resolver(+Entrada, -Saida)`] | [`arquivo.pl:42`] | [...] |
-| [...] | [...] | [...] |
+| `row_shadows(?Sun, ?Heights, ?Shade)` | [`backend/prolog/ocaso.pl:108`](backend/prolog/ocaso.pl) | Relaciona alturas e sombras nos dois sentidos; para sol a leste, inverte a linha. |
+| `solve(+Puzzle, -Towers)` | [`backend/prolog/ocaso.pl:242`](backend/prolog/ocaso.pl) | Impõe as regras e procura uma solução. |
+| `count_solutions(+Puzzle, +Limit, -Count)` | [`backend/prolog/ocaso.pl:258`](backend/prolog/ocaso.pl) | Conta soluções até um limite, usado para testar unicidade. |
+| `generate(+Difficulty, -Puzzle)` | [`backend/prolog/ocaso.pl:288`](backend/prolog/ocaso.pl) | Gera tabuleiro, pistas, lagos e revelações com solução única. |
+| `hint(+Puzzle, +Placed, -Hint)` | [`backend/prolog/ocaso.pl:438`](backend/prolog/ocaso.pl) | Deduz uma casa, aponta uma decisão errada ou identifica o puzzle completo. |
+| `api_generate/2`, `api_solve/2`, `api_hint/3` | [`backend/prolog/ocaso.pl:541`](backend/prolog/ocaso.pl) | Convertem os dados JSON e os termos internos do jogo. |
 
 ### 5.2 Conceitos do paradigma lógico utilizados
 
-<!--
-  Marque o que o projeto usa DE FATO e indique onde. Não é preciso usar
-  tudo; é preciso explicar bem o que foi usado.
--->
-
-- [ ] Fatos e regras como base de conhecimento: [onde]
-- [ ] Unificação e casamento de padrões: [onde]
-- [ ] Recursão (inclusive sobre listas): [onde]
-- [ ] Backtracking e múltiplas soluções: [onde]
-- [ ] `findall/3`, `bagof/3`, `setof/3` ou similares: [onde]
-- [ ] Corte (`!`) ou negação (`\+`), e por que foram necessários: [onde]
-- [ ] Programação por restrições (CLP(FD) ou outra): [onde]
-- [ ] Predicados de ordem superior (`maplist`, `foldl`, `include`...): [onde]
-- [ ] Outro: [...]
+- [x] Unificação e casamento de padrões: conversão de puzzles e regras em [`backend/prolog/ocaso.pl:567`](backend/prolog/ocaso.pl).
+- [x] Recursão sobre listas: o percurso recursivo da linha em [`backend/prolog/ocaso.pl:125`](backend/prolog/ocaso.pl).
+- [x] Backtracking e múltiplas soluções: `solution/3`, `labeling/2` e contagem limitada em [`backend/prolog/ocaso.pl:248`](backend/prolog/ocaso.pl).
+- [x] `findall/3`: candidatos a lagos, revelações e valores excluídos em [`backend/prolog/ocaso.pl:348`](backend/prolog/ocaso.pl).
+- [x] Corte (`!`) e negação (`\+`): seleção determinística em [`backend/prolog/ocaso.pl:244`](backend/prolog/ocaso.pl) e exclusão de posições fixas em [`backend/prolog/ocaso.pl:396`](backend/prolog/ocaso.pl).
+- [x] CLP(FD): variáveis de altura, restrições de sombras e pistas em [`backend/prolog/ocaso.pl:171`](backend/prolog/ocaso.pl).
+- [x] Predicados de ordem superior: `maplist/…` em [`backend/prolog/ocaso.pl:172`](backend/prolog/ocaso.pl) e `foldl/…` em [`backend/prolog/ocaso.pl:381`](backend/prolog/ocaso.pl).
 
 ### 5.3 Trecho em destaque
 
-<!--
-  Escolha o trecho de Prolog de que o grupo mais se orgulha (ou o mais
-  difícil). Cole o código e explique como ele funciona: o que é declarado,
-  como o Prolog chega à resposta, e por que essa solução é "lógica" e não
-  uma tradução de um algoritmo imperativo.
--->
-
 ```prolog
-[trecho]
+row_shadows(west, Heights, Shade) :-
+    cast(Heights, [], Shade).
+row_shadows(east, Heights, Shade) :-
+    same_length(Heights, Shade),
+    reverse(Heights, ReversedHeights),
+    reverse(Shade, ReversedShade),
+    cast(ReversedHeights, [], ReversedShade).
 ```
 
-[Explicação.]
+([`backend/prolog/ocaso.pl:108`](backend/prolog/ocaso.pl))
+
+Esse predicado descreve a relação entre a linha de alturas e sua sombra. No
+caso oeste, `cast/3` percorre as casas e restringe a sombra conforme as
+torres anteriores. No caso leste, a mesma relação é reutilizada após inverter
+a linha. Como alturas e sombras são variáveis CLP(FD), a relação pode tanto
+calcular sombras quanto restringir alturas possíveis; não é necessário
+escrever dois algoritmos direcionais. O `same_length/2` fixa o tamanho da
+sombra antes de invertê-la: sem ele, `reverse/2` sobre uma lista ainda sem
+tamanho deixava um ponto de escolha que, no backtracking, nunca terminava.
 
 ## 6. Parte em Elm
 
 ### 6.1 Modelo e mensagens
 
-<!--
-  Os tipos centrais do programa: o Model, o tipo Msg e os custom types do
-  domínio. Explique as escolhas: por que um custom type e não um Bool, por
-  que Maybe ou Result, etc.
--->
-
 ```elm
-[type alias Model = ...]
-[type Msg = ...]
+type Source
+    = Given
+    | Player
+    | Prolog
+
+type Cell
+    = Lake
+    | Undecided
+    | Decided Source Content
+
+type Board
+    = Board Int (Array Cell)
+
+type alias RowClue =
+    { sun : Sun
+    , shade : Int
+    }
+
+type Pending
+    = Idle
+    | Generating
+    | Solving
+    | RequestingHint
+
+type alias Game =
+    { puzzle : Puzzle
+    , board : Board
+    , selected : Maybe Position
+    , history : List Board
+    , hint : Maybe Hint
+    }
+
+type alias Model =
+    { game : Maybe Game
+    , difficulty : Difficulty
+    , pending : Pending
+    , darkTheme : Bool
+    , error : Maybe String
+    }
 ```
 
-[Explicação das escolhas.]
+Os tipos do domínio estão em [`frontend/src/Ocaso.elm:46`](frontend/src/Ocaso.elm);
+o estado e as mensagens da aplicação ficam em
+[`frontend/src/Main.elm:61`](frontend/src/Main.elm). Uma casa distingue lago,
+indecisão e conteúdo decidido com origem explícita. `Board` é um tipo opaco
+que guarda o próprio tamanho, e o sol e a pista de cada linha ficam juntos em
+`RowClue`, em vez de duas listas paralelas. Puzzle, tabuleiro, seleção,
+histórico e dica formam um `Game`, e o `Model` guarda `Maybe Game`, então não
+existe tabuleiro sem puzzle. A requisição pendente é um tipo próprio, em vez
+de uma flag booleana, para representar qual operação está em andamento. O
+estado é imutável e o histórico guarda tabuleiros anteriores para desfazer.
 
 ### 6.2 Conceitos do paradigma funcional utilizados
 
-- [ ] Arquitetura Elm (Model, update, view): [onde]
-- [ ] Custom types e `case` exaustivo: [onde]
-- [ ] `Maybe` e `Result` no lugar de null e exceções: [onde]
-- [ ] Funções de ordem superior e aplicação parcial: [onde]
-- [ ] Composição (`|>`, `>>`): [onde]
-- [ ] Decoders e encoders JSON: [onde]
-- [ ] Comandos e subscriptions (efeitos controlados): [onde]
-- [ ] Imutabilidade e atualização de records: [onde]
-- [ ] Outro: [...]
+- [x] Arquitetura Elm (Model, update, view): [`frontend/src/Main.elm:136`](frontend/src/Main.elm).
+- [x] Custom types e `case` exaustivo: [`frontend/src/Ocaso.elm:85`](frontend/src/Ocaso.elm), [`frontend/src/Hint.elm:52`](frontend/src/Hint.elm).
+- [x] `Maybe` e `Result` para partida opcional e respostas HTTP: [`frontend/src/Main.elm:85`](frontend/src/Main.elm), [`frontend/src/Api.elm:68`](frontend/src/Api.elm).
+- [x] Funções de ordem superior e aplicação parcial: edições como funções `Cell -> Cell` em [`frontend/src/Ocaso.elm:397`](frontend/src/Ocaso.elm) e `edit`/`playing` em [`frontend/src/Main.elm:245`](frontend/src/Main.elm).
+- [x] Composição (`|>`, `>>`): cálculo de sombras e pistas em [`frontend/src/Ocaso.elm:312`](frontend/src/Ocaso.elm).
+- [x] Decoders e encoders JSON próprios: [`frontend/src/Api.elm:109`](frontend/src/Api.elm), [`frontend/src/Api.elm:223`](frontend/src/Api.elm), [`frontend/src/Api.elm:286`](frontend/src/Api.elm).
+- [x] Comandos e subscriptions: requisições HTTP e teclado em [`frontend/src/Main.elm:332`](frontend/src/Main.elm).
+- [x] Imutabilidade e atualização de records: transições de estado e desfazer em [`frontend/src/Main.elm:261`](frontend/src/Main.elm).
 
 ### 6.3 Trecho em destaque
 
 ```elm
-[trecho]
+    , solved =
+        Set.isEmpty towersInShadow
+            && Set.isEmpty lakesInSun
+            && List.all ((==) Exact) rowStatuses
+            && List.all ((==) Exact) colStatuses
 ```
 
-[Explicação.]
+(trecho de `analyze`, em [`frontend/src/Ocaso.elm:312`](frontend/src/Ocaso.elm))
+
+`Undecided` não representa uma torre e, portanto, não invalida a solução por
+si só. O jogo termina quando as torres não estão em sombra, todos os lagos
+estão sombreados e as pistas de linhas e colunas são exatas. Como o puzzle
+tem solução única, satisfazer todas essas regras basta para reconhecer a
+solução sem exigir que cada casa tenha sido clicada. A função `analyze`
+calcula sombras, pistas, erros e esse resultado uma única vez a cada desenho
+da tela, em vez de cada casa recalcular as sombras do tabuleiro inteiro.
 
 ## 7. Integração
 
-<!--
-  Curto: a parte Python não é avaliada. Liste as rotas ou a forma de
-  comunicação e o formato dos dados trocados. Se o grupo não usou Python,
-  explique como Elm e Prolog se comunicam.
--->
+As posições da API usam índices iniciados em zero. O puzzle contém tamanho,
+orientação do Sol por linha, pistas, lagos e revelações; altura zero em uma
+revelação representa chão.
 
-| Rota / chamada | Entrada | Saída | Predicado Prolog |
-|----------------|---------|-------|------------------|
-| [`POST /api/...`] | [...] | [...] | [`...`] |
+| Rota | Entrada | Saída | Predicado Prolog |
+|------|---------|-------|------------------|
+| `POST /api/generate` | `{"difficulty":"easy"}` | Puzzle com `size`, `suns`, `rows`, `cols`, `lakes` e `givens` | `api_generate/2` |
+| `POST /api/solve` | Puzzle | `{"towers":[...]}` | `api_solve/2` |
+| `POST /api/hint` | `{"puzzle":...,"placed":[...]}` | Dica `cell`, `wrong` ou `complete` | `api_hint/3` |
+
+Python valida os formatos com Pydantic e encaminha os dados por Janus. Não
+implementa as regras de sombra, restrições ou busca.
 
 ## 8. Testes e validação
 
-<!--
-  Como o grupo sabe que o sistema funciona? Testes automatizados (plunit,
-  pytest, elm-test), roteiros de teste manual, casos de borda verificados.
--->
-
-- [O que foi testado e como.]
-- [Casos de borda considerados.]
+- O arquivo [`backend/prolog/test_ocaso.pl:42`](backend/prolog/test_ocaso.pl)
+  tem 22 testes plunit para sombras, regras, unicidade, geração e dicas,
+  todos passando com o SWI-Prolog 11 e sem avisos.
+- [`backend/tests/test_api.py:32`](backend/tests/test_api.py) cobre níveis,
+  formatos, resolução, dicas, erro e puzzle completo. Os 12 casos passam com
+  o Janus e o Prolog reais.
+- `npx elm-format --validate src/`, `npx elm make src/Main.elm
+  --output=/dev/null` e `npm run build` passaram.
+- No navegador, com o backend real, foram exercitados os três tamanhos,
+  ciclo de jogada, teclado, desfazer, dica errada, dica deduzida e
+  resolução.
 
 ## 9. Limitações e problemas conhecidos
 
-<!--
-  Seja honesto. Um problema conhecido e bem descrito vale mais que um
-  problema escondido que o avaliador descobre sozinho.
--->
-
-- [Limitação ou bug conhecido, e em que situação acontece.]
-- [O que o grupo faria com mais tempo.]
+- O `janus-swi` é compilado contra a instalação local do SWI-Prolog; em
+  algumas máquinas é preciso recompilá-lo (comando no README). No Windows o
+  sistema não foi executado com o Prolog real.
+- Quando nenhuma regra isolada nem nenhum par de regras explica a dica, a
+  explicação diz apenas que o valor é excluído "pela combinação de todas as
+  regras".
+- Não há suíte automatizada Elm para as funções puras. A compilação e o
+  roteiro visual no navegador verificam o cliente, mas não substituem testes
+  unitários de cada regra.
+- O nível "difícil" é medido pelo tamanho (7×7) e pela quantidade mínima
+  de casas reveladas, não pelas técnicas de dedução necessárias.
 
 ## 10. Contribuição de cada integrante
 
-<!--
-  O que cada pessoa fez. Deve ser coerente com o histórico de commits do
-  repositório. Todos os integrantes precisam concordar com esta tabela.
--->
+A tabela segue o histórico de commits do repositório.
 
 | Integrante | Principais contribuições |
 |------------|--------------------------|
-| [Nome]     | [...] |
-| [Nome]     | [...] |
-| [Nome]     | [...] |
-| [Nome]     | [...] |
-| [Nome]     | [...] |
-
-<!--
-  Além desta tabela, que é do grupo, cada integrante entrega uma avaliação
-  360 graus individual no SEU repositório do GitHub Classroom, em
-  avaliacao-360/<matricula>.md. Veja o modelo em avaliacao-360/TEMPLATE.md.
--->
+| Davi Mesquita | Integração do backend com o Ocaso: rotas e validação Pydantic ([`backend/app/main.py`](backend/app/main.py)), ponte com o Prolog ([`backend/app/prolog.py`](backend/app/prolog.py)) e testes da API ([`backend/tests/test_api.py`](backend/tests/test_api.py)). |
+| Anna Clara Brandão | Frontend Elm: domínio do tabuleiro ([`frontend/src/Ocaso.elm`](frontend/src/Ocaso.elm)), tipos e textos das dicas ([`frontend/src/Hint.elm`](frontend/src/Hint.elm)), HTTP e JSON ([`frontend/src/Api.elm`](frontend/src/Api.elm)), interface ([`frontend/src/Main.elm`](frontend/src/Main.elm)), visual ([`frontend/src/style.css`](frontend/src/style.css)) e renomeação do projeto. |
+| Renan Pariz | Regras do jogo e parte em Prolog: resolvedor, gerador e dicas ([`backend/prolog/ocaso.pl`](backend/prolog/ocaso.pl)) e testes plunit ([`backend/prolog/test_ocaso.pl`](backend/prolog/test_ocaso.pl)); revisão do frontend; documentação e relatório. |
 
 ## 11. Fontes, código de terceiros e uso de IA
 
-<!--
-  Declare tudo o que não foi escrito pelo grupo. Declarar não tira pontos;
-  deixar de declarar pode anular o trabalho.
--->
+**Código reaproveitado.** O repositório partiu da estrutura didática do
+template Sudoku para FastAPI, Janus, Elm e Vite. As regras do Ocaso, o
+código Prolog, a camada Python e os módulos Elm foram escritos para este
+jogo, com uso intensivo de IA (tabela abaixo).
 
-**Código reaproveitado.** [Ex.: "Partimos do template do Sudoku. Mantivemos
-a integração Python e a estrutura do frontend; o arquivo `x.pl` e os
-módulos `Y.elm` e `Z.elm` foram escritos pelo grupo."]
-
-**Referências.** [Livros, documentação, tutoriais, repositórios consultados.]
+**Referências.** Documentação oficial do SWI-Prolog/CLP(FD), Janus, FastAPI,
+Pydantic, Elm e Vite.
 
 **Uso de ferramentas de IA.**
 
-- **Faixa de uso no código:** [nenhum | pontual | auxiliar | intensivo]
-  <!--
-    nenhum: não usou. pontual: autocompletar, dúvidas, explicar erros.
-    auxiliar: trechos gerados pela IA e revisados pelo grupo. intensivo: a
-    IA escreveu a maior parte do código. Veja o efeito em AVALIACAO.md,
-    seção 1.5. Não declarar anula o trabalho; declarar não tira pontos.
-  -->
+- **Faixa de uso no código:** intensivo
 
 | Ferramenta | Para que foi usada | Como o grupo verificou o resultado |
 |------------|--------------------|------------------------------------|
-| [Nome ou "nenhuma"] | [...] | [...] |
+| Claude (Anthropic), via Claude Code | Proposta das regras do jogo, a pedido do grupo; todo o código Prolog (`ocaso.pl`) e os testes plunit; correção de um laço em `row_shadows/3`; refatoração dos módulos Elm (`Game`, `Board` opaco, `RowClue`, `analyze`); revisão do texto das dicas; instalação do ambiente; atualização deste relatório. | 22 testes plunit e 12 testes da API passando com o SWI-Prolog real; compilação e formatação do Elm; jogo testado no navegador; estudo do código pelo grupo para a apresentação. |
+| Copilot, assistente de IA | Geração e adaptação da integração Python, da primeira versão dos módulos Elm, da interface e da documentação. | Formatação e compilação Elm, build Vite, testes da API e revisão pelo grupo. |
 
 ## 12. Apresentação oral
 
-<!--
-  A apresentação tem 15 minutos e acontece no final do semestre. Uma
-  divisão que costuma funcionar: 2 min de contexto, 5 min de demonstração
-  do sistema funcionando, 6 min mostrando o código Prolog e Elm mais
-  interessante, 2 min de limitações e aprendizados. Todos os integrantes
-  devem falar.
-
-  Preencha esta seção antes da apresentação.
--->
-
-- **Slides:** [mesmo caminho indicado na seção 1, ou "não há"]
+- **Slides:** não há
 - **Roteiro:**
 
 | Parte | Duração | Quem apresenta |
 |-------|:-------:|----------------|
-| [Contexto e objetivo] | [2 min] | [Nome] |
-| [Demonstração] | [5 min] | [Nome] |
-| [Código Prolog] | [3 min] | [Nome] |
-| [Código Elm] | [3 min] | [Nome] |
-| [Limitações e aprendizados] | [2 min] | [Nome] |
+| Contexto e objetivo | 2 min | Davi Mesquita |
+| Demonstração do jogo | 5 min | Anna Clara Brandão |
+| Modelo lógico e dicas Prolog | 3 min | Renan Pariz |
+| Tipos e Arquitetura Elm | 3 min | Anna Clara Brandão |
+| Limitações e aprendizados | 2 min | Davi Mesquita e Renan Pariz |
 
 ## 13. Reflexão sobre os paradigmas
 
-<!--
-  De 1 a 3 parágrafos. Perguntas que podem ajudar:
-  - O que ficou mais simples em Prolog do que seria numa linguagem
-    imperativa? E o que ficou mais difícil?
-  - O que o compilador do Elm impediu que desse errado?
-  - Como a forma de pensar mudou entre as duas linguagens?
--->
+No Prolog, as regras de sombra e as pistas são restrições sobre variáveis,
+em vez de passos para preencher a grade em uma ordem fixa. O backtracking e
+o CLP(FD) permitem testar unicidade, gerar puzzles e explicar por que uma
+altura é impossível usando subconjuntos de regras. A parte delicada é
+entender como direção do Sol, índices e propagação se relacionam.
 
-[Reflexão.]
-
----
-
-<!--
-  CHECKLIST ANTES DE ENTREGAR (apague esta seção depois de conferir)
-
-  - [ ] `uv run scripts/validar_entrega.py` termina sem erros.
-  - [ ] Todos os integrantes, com matrícula e turma, estão na seção 1.
-  - [ ] O commit ou tag da seção 1 existe no repositório e é a versão final.
-  - [ ] As instruções da seção 3 funcionam numa máquina sem nada instalado
-        além dos requisitos listados.
-  - [ ] Os locais indicados (arquivo:linha) conferem com o commit entregue.
-  - [ ] As seções 10 e 11 foram revisadas por todo o grupo.
-  - [ ] Se há slides, o arquivo está no repositório e o caminho da seção 1
-        está certo.
-  - [ ] Cada integrante entregou a própria avaliação 360 graus no seu
-        repositório individual, em avaliacao-360/<matricula>.md.
-  - [ ] Nenhum texto entre [colchetes] ou comentário de instrução sobrou.
--->
+No Elm, custom types separam lago, casa indecisa, conteúdo e origem. Isso
+torna explícitos estados que seriam ambíguos em uma grade de inteiros. A
+Arquitetura Elm mantém eventos e efeitos HTTP no `update`, enquanto o
+cálculo de sombras e o estado das pistas permanecem puros. O grupo precisa
+revisar e compreender essas decisões para explicá-las na apresentação.
