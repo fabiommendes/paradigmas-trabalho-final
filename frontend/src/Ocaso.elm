@@ -12,7 +12,6 @@ module Ocaso exposing
     , Sun(..)
     , analyze
     , boardFromPuzzle
-    , cells
     , clearCell
     , contentValue
     , cycleCell
@@ -167,13 +166,6 @@ chunksOf size list =
 
     else
         List.take size list :: chunksOf size (List.drop size list)
-
-
-{-| Todas as casas, na ordem de leitura. Serve para comparar dois tabuleiros.
--}
-cells : Board -> List Cell
-cells (Board _ array) =
-    Array.toList array
 
 
 {-| As casas decididas pelo jogador ou pelo Prolog. É o que o Prolog precisa

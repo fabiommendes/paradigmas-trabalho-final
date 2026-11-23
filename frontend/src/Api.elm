@@ -319,9 +319,6 @@ hintDecoder =
                     "complete" ->
                         Decode.succeed AllDone
 
-                    "unsolvable" ->
-                        Decode.fail "Este puzzle não tem solução."
-
                     _ ->
                         Decode.fail "tipo de dica desconhecido"
             )
@@ -401,7 +398,7 @@ expectJson toMsg decoder =
             case response of
                 Http.GoodStatus_ _ body ->
                     Decode.decodeString decoder body
-                        |> Result.mapError (\_ -> "Resposta inesperada do servidor.")
+                        |> Result.mapError decodeErrorMessage
 
                 Http.BadStatus_ metadata body ->
                     Err (errorDetail metadata.statusCode body)
@@ -414,6 +411,19 @@ expectJson toMsg decoder =
 
                 Http.NetworkError_ ->
                     Err "Não foi possível falar com o servidor. O backend está rodando?"
+
+
+{-| As falhas que os próprios decoders declaram (`Decode.fail`, como em
+`toPuzzle`) já trazem uma mensagem legível; as demais viram um texto genérico.
+-}
+decodeErrorMessage : Decode.Error -> String
+decodeErrorMessage error =
+    case error of
+        Decode.Failure message _ ->
+            message
+
+        _ ->
+            "Resposta inesperada do servidor."
 
 
 {-| Quando o Pydantic rejeita o JSON, `detail` é uma lista de erros e não um

@@ -264,7 +264,7 @@ edit change game =
         board =
             change game.board
     in
-    if Ocaso.cells board == Ocaso.cells game.board then
+    if board == game.board then
         game
 
     else
@@ -393,6 +393,12 @@ keyToMsg key =
 
 view : Model -> Html Msg
 view model =
+    let
+        -- A análise do tabuleiro é calculada uma única vez por desenho e
+        -- repassada ao tabuleiro e à mensagem de status.
+        gameAnalysis =
+            Maybe.map (\game -> ( game, Ocaso.analyze game.puzzle game.board )) model.game
+    in
     div [ class "app" ]
         [ header [ class "app-header" ]
             [ div [ class "app-container app-header-content" ]
@@ -403,11 +409,11 @@ view model =
             ]
         , main_ [ class "app-main" ]
             [ div [ class "app-container game" ]
-                [ viewBoard model
+                [ viewBoard model gameAnalysis
                 , aside [ class "side-panel" ]
                     [ span [ class "panel-label" ] [ text "Novo puzzle" ]
                     , viewDifficulty model
-                    , div [ class "message-area" ] [ viewStatus model ]
+                    , div [ class "message-area" ] [ viewStatus model gameAnalysis ]
                     , span [ class "panel-label" ] [ text "Jogadas" ]
                     , viewNumberPad model
                     , span [ class "panel-label" ] [ text "Ações" ]
@@ -476,8 +482,8 @@ viewDifficulty model =
         ]
 
 
-viewStatus : Model -> Html Msg
-viewStatus model =
+viewStatus : Model -> Maybe ( Game, Analysis ) -> Html Msg
+viewStatus model gameAnalysis =
     case ( model.error, model.pending ) of
         ( Just error, _ ) ->
             div [ class "message message--error" ]
@@ -495,9 +501,9 @@ viewStatus model =
             loadingMessage "O Prolog está analisando as jogadas..."
 
         ( Nothing, Idle ) ->
-            case model.game of
-                Just game ->
-                    if (Ocaso.analyze game.puzzle game.board).solved then
+            case gameAnalysis of
+                Just ( _, { solved } ) ->
+                    if solved then
                         div [ class "message message--success" ] [ text "Puzzle resolvido!" ]
 
                     else
@@ -515,17 +521,21 @@ loadingMessage message =
         ]
 
 
-viewBoard : Model -> Html Msg
-viewBoard model =
-    case model.game of
+viewBoard : Model -> Maybe ( Game, Analysis ) -> Html Msg
+viewBoard model gameAnalysis =
+    case gameAnalysis of
         Nothing ->
-            div [ class "board-loading" ] [ text "Preparando o tabuleiro..." ]
+            -- Sem partida: ou o primeiro puzzle ainda está chegando, ou o
+            -- pedido falhou (o erro aparece no painel ao lado).
+            if model.error == Nothing then
+                div [ class "board-loading" ] [ text "Preparando o tabuleiro..." ]
 
-        Just game ->
+            else
+                div [ class "board-loading" ]
+                    [ text "Não foi possível carregar o puzzle. Escolha uma dificuldade para tentar de novo." ]
+
+        Just ( game, analysis ) ->
             let
-                analysis =
-                    Ocaso.analyze game.puzzle game.board
-
                 columnTemplate =
                     "repeat(" ++ String.fromInt game.puzzle.size ++ ", minmax(0, 1fr))"
             in
