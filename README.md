@@ -1,7 +1,8 @@
 # Ocaso
 
-Ocaso é um jogo de lógica sobre torres e sombras ao entardecer, implementado
-com Prolog, Python e Elm. O Prolog modela as regras com CLP(FD), resolve e
+Ocaso é um jogo de lógica sobre torres, lagos e sombras ao entardecer, feito
+do zero para o trabalho final de Paradigmas de Programação e implementado com
+Prolog, Python e Elm. O Prolog modela as regras com CLP(FD), resolve e
 gera puzzles de solução única; Python expõe essa lógica por HTTP; Elm mantém o
 estado do jogo e calcula as verificações visuais localmente.
 
