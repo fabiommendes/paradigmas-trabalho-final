@@ -45,6 +45,11 @@ test(sol_a_oeste, S == [0,1,1,0,1]) :-
 test(sol_a_leste, S == [1,1,0,0,0]) :-
     row_shadows(east, [0,0,2,0,0], S).
 
+% Com a sombra ainda livre, a relação tem uma única resposta e termina no
+% backtracking (antes, reverse/2 com lista sem tamanho entrava em laço).
+test(sol_a_leste_termina, all(S == [[1,1,0,0,0]])) :-
+    row_shadows(east, [0,0,2,0,0], S).
+
 test(sombra_cortada_na_borda, S == [0,0,0,0,0]) :-
     row_shadows(west, [0,0,0,0,3], S).
 

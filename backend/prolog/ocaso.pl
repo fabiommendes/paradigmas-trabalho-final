@@ -108,6 +108,10 @@
 row_shadows(west, Heights, Shade) :-
     cast(Heights, [], Shade).
 row_shadows(east, Heights, Shade) :-
+    % same_length/2 fixa o tamanho de Shade antes de invertê-la. Sem isso,
+    % reverse/2 com uma lista ainda sem tamanho deixa um ponto de escolha
+    % que, no backtracking, tenta listas cada vez maiores para sempre.
+    same_length(Heights, Shade),
     reverse(Heights, ReversedHeights),
     reverse(Shade, ReversedShade),
     cast(ReversedHeights, [], ReversedShade).
