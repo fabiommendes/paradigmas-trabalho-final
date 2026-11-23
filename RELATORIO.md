@@ -2,11 +2,11 @@
 
 ## 1. Identificação
 
-| Nome completo | Matrícula | Turma (14h/16h) | Usuário GitHub |
+| Nome completo | Matrícula | Turma 14h | Usuário GitHub |
 |---------------|-----------|-----------------|----------------|
-| Davi Mesquita | 222006650 | 16h | @davimesquit |
-| Anna Clara Brandão | 222006534 | 16h | @annacbrandao |
-| Renan Pariz | 222006392 | 16h | @renanpariiz |
+| Davi Mesquita | 222006650 | 14h | @davimesquit |
+| Anna Clara Brandão | 222006534 | 14h | @annacbrandao |
+| Renan Pariz | 222006392 | 14h | @renanpariiz |
 
 - **Nome do projeto:** Ocaso
 - **Nome do grupo:** Grupo 5
