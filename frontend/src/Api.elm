@@ -6,15 +6,24 @@ module Api exposing
     , solve
     )
 
-{-| HTTP and JSON integration for the Ocaso API.
+{-| Comunicação com o backend (FastAPI + Prolog) e conversão de JSON.
+
+As funções daqui devolvem `Cmd msg`: a DESCRIÇÃO de uma requisição. Quem a
+executa é o runtime do Elm, que entrega a resposta ao `update` como uma
+mensagem com um `Result`.
+
+Este é o único módulo que conhece o formato do JSON. O resto do programa só
+vê os tipos de `Ocaso` e `Hint`. Os decoders não aceitam qualquer coisa: um
+puzzle com pistas faltando ou uma altura 7 viram um `Err`, nunca um valor
+inválido dentro do programa.
+
 -}
 
-import Array
 import Hint exposing (Exclusion, Hint(..), Method(..), Rule(..))
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
-import Ocaso exposing (Board, Cell(..), Content(..), Height(..), Position, Puzzle, Source(..), Sun(..))
+import Ocaso exposing (Board, Content(..), Position, Puzzle, Sun(..))
 import Set
 
 
@@ -37,6 +46,8 @@ difficultyLabel difficulty =
             "Difícil"
 
 
+{-| O nome usado pela API (e pelo Prolog: são os átomos easy, medium, hard).
+-}
 difficultyName : Difficulty -> String
 difficultyName difficulty =
     case difficulty of
@@ -50,6 +61,10 @@ difficultyName difficulty =
             "hard"
 
 
+
+-- REQUISIÇÕES
+
+
 generate : Difficulty -> (Result String Puzzle -> msg) -> Cmd msg
 generate difficulty toMsg =
     Http.post
@@ -61,12 +76,12 @@ generate difficulty toMsg =
         }
 
 
-solve : Puzzle -> (Result String (List (List Int)) -> msg) -> Cmd msg
+solve : Puzzle -> (Result String (List (List Content)) -> msg) -> Cmd msg
 solve puzzle toMsg =
     Http.post
         { url = "/api/solve"
         , body = Http.jsonBody (encodePuzzle puzzle)
-        , expect = expectJson toMsg (towerRowsDecoder puzzle.size)
+        , expect = expectJson toMsg (solutionDecoder puzzle.size)
         }
 
 
@@ -78,61 +93,41 @@ hint puzzle board toMsg =
             Http.jsonBody <|
                 Encode.object
                     [ ( "puzzle", encodePuzzle puzzle )
-                    , ( "placed", encodePlaced puzzle.size board )
+                    , ( "placed", Encode.list encodeDecision (Ocaso.decisions board) )
                     ]
         , expect = expectJson toMsg hintDecoder
         }
 
 
+
+-- JSON: ENVIO
+
+
+{-| No JSON, sóis e pistas de linha são duas listas separadas (é o formato
+que o Prolog recebe). No domínio eles andam juntos em `RowClue`.
+-}
 encodePuzzle : Puzzle -> Encode.Value
 encodePuzzle puzzle =
     Encode.object
         [ ( "size", Encode.int puzzle.size )
-        , ( "suns", Encode.list (Encode.string << sunName) puzzle.suns )
-        , ( "rows", Encode.list Encode.int puzzle.rows )
-        , ( "cols", Encode.list Encode.int puzzle.cols )
+        , ( "suns", Encode.list (.sun >> sunName >> Encode.string) puzzle.rowClues )
+        , ( "rows", Encode.list (.shade >> Encode.int) puzzle.rowClues )
+        , ( "cols", Encode.list Encode.int puzzle.colClues )
         , ( "lakes", Encode.list encodePosition puzzle.lakes )
-        , ( "givens"
-          , Encode.list
-                (\( ( row, col ), content ) ->
-                    Encode.list identity
-                        [ Encode.int row
-                        , Encode.int col
-                        , Encode.int (contentValue content)
-                        ]
-                )
-                puzzle.givens
-          )
+        , ( "givens", Encode.list encodeDecision puzzle.givens )
         ]
 
 
-encodePlaced : Int -> Board -> Encode.Value
-encodePlaced size board =
-    List.range 0 (size * size - 1)
-        |> List.filterMap
-            (\index ->
-                case Array.get index board of
-                    Just (Decided Given _) ->
-                        Nothing
-
-                    Just (Decided _ content) ->
-                        Just
-                            (Encode.list identity
-                                [ Encode.int (index // size)
-                                , Encode.int (modBy size index)
-                                , Encode.int (contentValue content)
-                                ]
-                            )
-
-                    _ ->
-                        Nothing
-            )
-        |> Encode.list identity
+{-| `[linha, coluna, altura]`, com altura 0 para chão.
+-}
+encodeDecision : ( Position, Content ) -> Encode.Value
+encodeDecision ( ( row, col ), content ) =
+    Encode.list Encode.int [ row, col, Ocaso.contentValue content ]
 
 
 encodePosition : Position -> Encode.Value
 encodePosition ( row, col ) =
-    Encode.list identity [ Encode.int row, Encode.int col ]
+    Encode.list Encode.int [ row, col ]
 
 
 sunName : Sun -> String
@@ -145,34 +140,34 @@ sunName sun =
             "east"
 
 
-contentValue : Content -> Int
-contentValue content =
-    case content of
-        Ground ->
-            0
 
-        Tower height ->
-            case height of
-                Low ->
-                    1
+-- JSON: RECEBIMENTO
 
-                Mid ->
-                    2
 
-                High ->
-                    3
+{-| O puzzle exatamente como vem no JSON, antes de ser conferido. Ele só
+existe dentro deste módulo; `toPuzzle` o transforma no `Puzzle` do domínio
+ou falha com uma mensagem.
+-}
+type alias WirePuzzle =
+    { size : Int
+    , suns : List Sun
+    , rows : List Int
+    , cols : List Int
+    , lakes : List Position
+    , givens : List ( Position, Content )
+    }
 
 
 puzzleDecoder : Decoder Puzzle
 puzzleDecoder =
-    Decode.map6 Puzzle
+    Decode.map6 WirePuzzle
         (Decode.field "size" Decode.int)
         (Decode.field "suns" (Decode.list sunDecoder))
         (Decode.field "rows" (Decode.list Decode.int))
         (Decode.field "cols" (Decode.list Decode.int))
         (Decode.field "lakes" (Decode.list positionDecoder))
         (Decode.field "givens" (Decode.list givenDecoder))
-        |> Decode.andThen validatePuzzle
+        |> Decode.andThen toPuzzle
 
 
 sunDecoder : Decoder Sun
@@ -221,41 +216,31 @@ givenDecoder =
             )
 
 
-validatePuzzle : Puzzle -> Decoder Puzzle
-validatePuzzle puzzle =
+{-| Confere o puzzle recebido e monta o `Puzzle` do domínio. As listas de
+sóis e de pistas só são juntadas depois de conferido que têm o mesmo
+tamanho (`List.map2` descartaria em silêncio o que sobrasse).
+-}
+toPuzzle : WirePuzzle -> Decoder Puzzle
+toPuzzle wire =
     let
         positions =
-            puzzle.lakes ++ List.map Tuple.first puzzle.givens
+            wire.lakes ++ List.map Tuple.first wire.givens
 
         inBounds ( row, col ) =
-            row
-                >= 0
-                && col
-                >= 0
-                && row
-                < puzzle.size
-                && col
-                < puzzle.size
+            row >= 0 && col >= 0 && row < wire.size && col < wire.size
 
         uniquePositions =
             Set.size (Set.fromList positions) == List.length positions
 
         validClues =
-            List.all (\clue -> clue >= 0 && clue <= puzzle.size) puzzle.rows
-                && List.all (\clue -> clue >= 0 && clue <= 3 * puzzle.size) puzzle.cols
-
-        validSize =
-            List.member puzzle.size [ 5, 6, 7 ]
+            List.all (\clue -> clue >= 0 && clue <= wire.size) wire.rows
+                && List.all (\clue -> clue >= 0 && clue <= 3 * wire.size) wire.cols
 
         validLengths =
-            List.length puzzle.suns
-                == puzzle.size
-                && List.length puzzle.rows
-                == puzzle.size
-                && List.length puzzle.cols
-                == puzzle.size
+            List.all ((==) wire.size)
+                [ List.length wire.suns, List.length wire.rows, List.length wire.cols ]
     in
-    if not validSize then
+    if not (List.member wire.size [ 5, 6, 7 ]) then
         Decode.fail "tamanho de tabuleiro inválido"
 
     else if not validLengths then
@@ -271,35 +256,33 @@ validatePuzzle puzzle =
         Decode.fail "há casas fixas repetidas ou sobrepostas"
 
     else
-        Decode.succeed puzzle
+        Decode.succeed
+            { size = wire.size
+            , rowClues = List.map2 Ocaso.RowClue wire.suns wire.rows
+            , colClues = wire.cols
+            , lakes = wire.lakes
+            , givens = wire.givens
+            }
 
 
-towerRowsDecoder : Int -> Decoder (List (List Int))
-towerRowsDecoder size =
-    Decode.field "towers" (Decode.list (Decode.list towerValueDecoder))
+{-| A solução: `size` linhas com `size` casas, cada uma chão ou torre.
+-}
+solutionDecoder : Int -> Decoder (List (List Content))
+solutionDecoder size =
+    Decode.field "towers" (Decode.list (Decode.list (Decode.int |> Decode.andThen contentDecoder)))
         |> Decode.andThen
-            (\rows ->
-                if List.length rows == size && List.all (\row -> List.length row == size) rows then
-                    Decode.succeed rows
+            (\lines ->
+                if List.length lines == size && List.all (\line -> List.length line == size) lines then
+                    Decode.succeed lines
 
                 else
                     Decode.fail "a solução tem dimensões inválidas"
             )
 
 
-towerValueDecoder : Decoder Int
-towerValueDecoder =
-    Decode.int
-        |> Decode.andThen
-            (\value ->
-                if value >= 0 && value <= 3 then
-                    Decode.succeed value
-
-                else
-                    Decode.fail "altura de torre inválida"
-            )
-
-
+{-| As dicas chegam com um campo `kind` que diz a forma do resto do JSON.
+`Decode.andThen` lê esse campo primeiro e escolhe o decoder de cada caso.
+-}
 hintDecoder : Decoder Hint
 hintDecoder =
     Decode.field "kind" Decode.string
@@ -391,6 +374,8 @@ methodDecoder =
             )
 
 
+{-| 0 é chão; 1 a 3 são torres; qualquer outro número é um erro.
+-}
 contentDecoder : Int -> Decoder Content
 contentDecoder value =
     if value == 0 then
@@ -400,6 +385,13 @@ contentDecoder value =
         Ocaso.heightFromInt value
             |> Maybe.map (Tower >> Decode.succeed)
             |> Maybe.withDefault (Decode.fail "valor de casa inválido")
+
+
+
+-- ERROS
+--
+-- `Http.expectJson` descarta o corpo das respostas de erro. O backend manda
+-- uma mensagem útil em `{"detail": "..."}`, então esta versão a aproveita.
 
 
 expectJson : (Result String value -> msg) -> Decoder value -> Http.Expect msg
@@ -424,6 +416,9 @@ expectJson toMsg decoder =
                     Err "Não foi possível falar com o servidor. O backend está rodando?"
 
 
+{-| Quando o Pydantic rejeita o JSON, `detail` é uma lista de erros e não um
+texto; nesse caso mostramos uma mensagem genérica com o código HTTP.
+-}
 errorDetail : Int -> String -> String
 errorDetail status body =
     case Decode.decodeString (Decode.field "detail" Decode.string) body of

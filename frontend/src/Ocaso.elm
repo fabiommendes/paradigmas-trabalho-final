@@ -1,40 +1,46 @@
 module Ocaso exposing
-    ( Board
+    ( Analysis
+    , Board
     , Cell(..)
     , ClueStatus(..)
     , Content(..)
     , Height(..)
     , Position
     , Puzzle
+    , RowClue
     , Source(..)
     , Sun(..)
+    , analyze
     , boardFromPuzzle
-    , cellAt
-    , clearPlayerCell
-    , colStatus
+    , cells
+    , clearCell
     , contentValue
     , cycleCell
-    , empty
+    , decisions
     , heightFromInt
     , heightValue
-    , isSolved
-    , lakesInSun
-    , revealHint
+    , placeContent
+    , revealCell
     , revealSolution
     , rowShadows
-    , rowStatus
-    , setPlayerContent
-    , shadowAt
-    , shadows
-    , toTowerRows
-    , towersInShadow
+    , rows
     )
 
-{-| Tipos e regras puras do Ocaso. O tabuleiro não conhece HTTP nem HTML.
+{-| Tipos e regras do Ocaso, do lado do Elm.
+
+Este módulo é PURO: não faz HTTP e não conhece HTML. Ele responde às
+perguntas que a tela precisa responder a cada clique (onde há sombra, quais
+pistas já fecham, se o puzzle está resolvido) sem chamar o Prolog. O Prolog
+só é chamado para o que exige busca: gerar, resolver e explicar dicas.
+
 -}
 
 import Array exposing (Array)
 import Set exposing (Set)
+
+
+
+-- TIPOS
 
 
 type Sun
@@ -42,23 +48,40 @@ type Sun
     | East
 
 
+{-| Uma torre só pode ter altura 1, 2 ou 3. Com um `Int` seria possível
+representar uma torre de altura 0 ou 7; com este tipo, não.
+-}
 type Height
     = Low
     | Mid
     | High
 
 
+{-| O que há num terreno decidido: chão (sem torre) ou uma torre.
+-}
 type Content
     = Ground
     | Tower Height
 
 
+{-| Quem decidiu a casa. A origem define o que o jogador pode mudar: casas
+reveladas pelo puzzle (`Given`) e pelo Prolog (`Prolog`) ficam travadas.
+-}
 type Source
     = Given
     | Player
     | Prolog
 
 
+{-| Uma casa é um lago, um terreno ainda não decidido, ou um terreno
+decidido, com conteúdo e origem.
+
+Separar `Undecided` de `Decided _ Ground` permite ao jogador marcar "aqui
+não tem torre" sem confundir isso com "ainda não pensei nesta casa". E como
+o lago é um construtor próprio, não existe "lago com torre": o tipo não
+deixa escrever esse estado.
+
+-}
 type Cell
     = Lake
     | Undecided
@@ -75,50 +98,104 @@ type alias Position =
     ( Int, Int )
 
 
-type alias Board =
-    Array Cell
+{-| O lado do sol e a pista de sombra de uma linha andam sempre juntos, então
+ficam no mesmo registro. Duas listas paralelas (sóis e pistas) poderiam ter
+tamanhos diferentes; uma lista de `RowClue` não.
+-}
+type alias RowClue =
+    { sun : Sun
+    , shade : Int
+    }
 
 
 type alias Puzzle =
     { size : Int
-    , suns : List Sun
-    , rows : List Int
-    , cols : List Int
+    , rowClues : List RowClue
+    , colClues : List Int
     , lakes : List Position
     , givens : List ( Position, Content )
     }
 
 
-empty : Int -> Board
-empty size =
-    Array.repeat (size * size) Undecided
+{-| O tabuleiro guarda o próprio tamanho junto com as casas.
+
+O tipo é OPACO: o módulo exporta `Board`, mas não o construtor. De fora não
+dá para montar um tabuleiro com um tamanho e um número de casas que não
+batem; só `boardFromPuzzle` cria tabuleiros, e só as funções daqui os
+alteram.
+
+-}
+type Board
+    = Board Int (Array Cell)
+
+
+
+-- CONSTRUÇÃO E LEITURA
 
 
 boardFromPuzzle : Puzzle -> Board
 boardFromPuzzle puzzle =
     let
+        start =
+            Board puzzle.size (Array.repeat (puzzle.size * puzzle.size) Undecided)
+
         withLakes =
-            List.foldl (\position board -> setCell puzzle.size position Lake board)
-                (empty puzzle.size)
-                puzzle.lakes
+            List.foldl (\position -> updateCell position (always Lake)) start puzzle.lakes
     in
     List.foldl
-        (\( position, content ) board ->
-            setCell puzzle.size position (Decided Given content) board
-        )
+        (\( position, content ) -> updateCell position (always (Decided Given content)))
         withLakes
         puzzle.givens
 
 
-cellAt : Position -> Int -> Board -> Cell
-cellAt ( row, col ) size board =
-    Array.get (row * size + col) board
-        |> Maybe.withDefault Undecided
+{-| As casas linha por linha, cada uma com a sua posição. A tela percorre
+esta lista em vez de pedir casa por casa, então nunca precisa tratar uma
+posição inexistente.
+-}
+rows : Board -> List (List ( Position, Cell ))
+rows (Board size array) =
+    array
+        |> Array.toList
+        |> List.indexedMap (\index cell -> ( ( index // size, modBy size index ), cell ))
+        |> chunksOf size
 
 
-setCell : Int -> Position -> Cell -> Board -> Board
-setCell size ( row, col ) cell board =
-    Array.set (row * size + col) cell board
+chunksOf : Int -> List a -> List (List a)
+chunksOf size list =
+    if size <= 0 || List.isEmpty list then
+        []
+
+    else
+        List.take size list :: chunksOf size (List.drop size list)
+
+
+{-| Todas as casas, na ordem de leitura. Serve para comparar dois tabuleiros.
+-}
+cells : Board -> List Cell
+cells (Board _ array) =
+    Array.toList array
+
+
+{-| As casas decididas pelo jogador ou pelo Prolog. É o que o Prolog precisa
+receber para dar uma dica (as reveladas pelo puzzle ele já conhece).
+-}
+decisions : Board -> List ( Position, Content )
+decisions board =
+    board
+        |> rows
+        |> List.concat
+        |> List.filterMap
+            (\( position, cell ) ->
+                case cell of
+                    Decided Given _ ->
+                        Nothing
+
+                    Decided _ content ->
+                        Just ( position, content )
+
+                    _ ->
+                        Nothing
+            )
 
 
 heightValue : Height -> Int
@@ -150,6 +227,8 @@ heightFromInt value =
             Nothing
 
 
+{-| A altura no formato da API: 0 para chão.
+-}
 contentValue : Content -> Int
 contentValue content =
     case content of
@@ -160,145 +239,138 @@ contentValue content =
             heightValue height
 
 
-contentFromInt : Int -> Content
-contentFromInt value =
-    heightFromInt value
-        |> Maybe.map Tower
-        |> Maybe.withDefault Ground
-
-
-toTowerRows : Int -> Board -> List (List Int)
-toTowerRows size board =
-    List.range 0 (size - 1)
-        |> List.map
-            (\row ->
-                List.range 0 (size - 1)
-                    |> List.map
-                        (\col ->
-                            case cellAt ( row, col ) size board of
-                                Decided _ content ->
-                                    contentValue content
-
-                                Lake ->
-                                    0
-
-                                Undecided ->
-                                    0
-                        )
-            )
-
-
-rowCells : Int -> Int -> Board -> List Cell
-rowCells size row board =
-    List.range 0 (size - 1)
-        |> List.map (\col -> cellAt ( row, col ) size board)
-
-
-rowShadows : Sun -> List Cell -> List Bool
-rowShadows sun cells =
-    let
-        westward =
-            cells
-                |> List.indexedMap
-                    (\index _ ->
-                        cells
-                            |> List.indexedMap
-                                (\sourceIndex sourceCell ->
-                                    sourceIndex
-                                        < index
-                                        && (towerHeight sourceCell
-                                                |> Maybe.map (\height -> sourceIndex + height >= index)
-                                                |> Maybe.withDefault False
-                                           )
-                                )
-                            |> List.any identity
-                    )
-    in
-    case sun of
-        West ->
-            westward
-
-        East ->
-            List.reverse cells
-                |> rowShadows West
-                |> List.reverse
-
-
-towerHeight : Cell -> Maybe Int
+towerHeight : Cell -> Int
 towerHeight cell =
     case cell of
         Decided _ (Tower height) ->
-            Just (heightValue height)
+            heightValue height
 
         _ ->
-            Nothing
+            0
 
 
-shadows : Puzzle -> Board -> List (List Bool)
-shadows puzzle board =
-    List.range 0 (puzzle.size - 1)
-        |> List.map
-            (\row ->
-                let
-                    sun =
-                        puzzle.suns
-                            |> List.drop row
-                            |> List.head
-                            |> Maybe.withDefault West
-                in
-                rowShadows sun (rowCells puzzle.size row board)
+
+-- SOMBRAS E PISTAS
+
+
+{-| Quais casas de uma linha estão na sombra.
+
+Uma casa está na sombra se alguma torre antes dela (no sentido em que a
+sombra anda) a alcança, isto é, se a posição da torre mais a sua altura
+chega até a casa. Percorremos a linha uma vez guardando o alcance máximo
+até ali (`reach`).
+
+Com o sol a leste a sombra anda para oeste. Em vez de uma segunda versão,
+invertemos a linha, como faz o `row_shadows/3` do Prolog.
+
+-}
+rowShadows : Sun -> List Cell -> List Bool
+rowShadows sun line =
+    case sun of
+        West ->
+            castShadows line
+
+        East ->
+            line
+                |> List.reverse
+                |> castShadows
+                |> List.reverse
+
+
+castShadows : List Cell -> List Bool
+castShadows line =
+    let
+        step cell ( index, reach, shaded ) =
+            ( index + 1
+            , max reach (index + towerHeight cell)
+            , (index <= reach) :: shaded
             )
 
-
-shadowAt : Puzzle -> Board -> Position -> Bool
-shadowAt puzzle board ( row, col ) =
-    shadows puzzle board
-        |> List.drop row
-        |> List.head
-        |> Maybe.andThen (List.drop col >> List.head)
-        |> Maybe.withDefault False
-
-
-rowStatus : Puzzle -> Board -> Int -> ClueStatus
-rowStatus puzzle board row =
-    let
-        shadowCount =
-            shadows puzzle board
-                |> List.drop row
-                |> List.head
-                |> Maybe.withDefault []
-                |> List.filter identity
-                |> List.length
-
-        clue =
-            puzzle.rows
-                |> List.drop row
-                |> List.head
-                |> Maybe.withDefault 0
+        ( _, _, reversed ) =
+            List.foldl step ( 0, -1, [] ) line
     in
-    clueStatus shadowCount clue
+    List.reverse reversed
 
 
-colStatus : Puzzle -> Board -> Int -> ClueStatus
-colStatus puzzle board col =
+{-| Tudo o que a tela precisa saber sobre o tabuleiro atual.
+
+É calculado uma única vez por desenho da tela (em vez de cada casa
+recalcular as sombras do tabuleiro inteiro) e reúne as quatro regras do
+jogo num só lugar.
+
+-}
+type alias Analysis =
+    { shaded : Set Position
+    , rowStatuses : List ClueStatus
+    , colStatuses : List ClueStatus
+    , towersInShadow : Set Position
+    , lakesInSun : Set Position
+    , solved : Bool
+    }
+
+
+analyze : Puzzle -> Board -> Analysis
+analyze puzzle board =
     let
-        total =
-            List.range 0 (puzzle.size - 1)
-                |> List.map
-                    (\row ->
-                        cellAt ( row, col ) puzzle.size board
-                            |> towerHeight
-                            |> Maybe.withDefault 0
-                    )
-                |> List.sum
+        boardRows =
+            rows board
 
-        clue =
-            puzzle.cols
-                |> List.drop col
-                |> List.head
-                |> Maybe.withDefault 0
+        shadeRows =
+            List.map2 (\clue line -> rowShadows clue.sun (List.map Tuple.second line))
+                puzzle.rowClues
+                boardRows
+
+        shaded =
+            List.map2 (List.map2 (\( position, _ ) inShade -> ( position, inShade )))
+                boardRows
+                shadeRows
+                |> List.concat
+                |> List.filter Tuple.second
+                |> List.map Tuple.first
+                |> Set.fromList
+
+        rowStatuses =
+            List.map2
+                (\clue line -> clueStatus (List.length (List.filter identity line)) clue.shade)
+                puzzle.rowClues
+                shadeRows
+
+        -- Soma as alturas coluna a coluna: cada linha vira uma lista de
+        -- alturas, e `List.map2 (+)` soma essas listas posição a posição.
+        columnSums =
+            boardRows
+                |> List.map (List.map (Tuple.second >> towerHeight))
+                |> List.foldl (List.map2 (+)) (List.repeat puzzle.size 0)
+
+        colStatuses =
+            List.map2 clueStatus columnSums puzzle.colClues
+
+        towersInShadow =
+            boardRows
+                |> List.concat
+                |> List.filter (\( position, cell ) -> towerHeight cell > 0 && Set.member position shaded)
+                |> List.map Tuple.first
+                |> Set.fromList
+
+        lakesInSun =
+            puzzle.lakes
+                |> List.filter (\position -> not (Set.member position shaded))
+                |> Set.fromList
     in
-    clueStatus total clue
+    { shaded = shaded
+    , rowStatuses = rowStatuses
+    , colStatuses = colStatuses
+    , towersInShadow = towersInShadow
+    , lakesInSun = lakesInSun
+
+    -- Casas não decididas contam como "sem torre". Como o puzzle tem
+    -- solução única, cumprir as quatro regras já é estar na solução.
+    , solved =
+        Set.isEmpty towersInShadow
+            && Set.isEmpty lakesInSun
+            && List.all ((==) Exact) rowStatuses
+            && List.all ((==) Exact) colStatuses
+    }
 
 
 clueStatus : Int -> Int -> ClueStatus
@@ -313,147 +385,120 @@ clueStatus actual clue =
         Exact
 
 
-towersInShadow : Puzzle -> Board -> Set Position
-towersInShadow puzzle board =
-    List.range 0 (puzzle.size - 1)
-        |> List.concatMap
-            (\row ->
-                List.range 0 (puzzle.size - 1)
-                    |> List.filterMap
-                        (\col ->
-                            let
-                                position =
-                                    ( row, col )
-                            in
-                            case cellAt position puzzle.size board of
-                                Decided _ (Tower _) ->
-                                    if shadowAt puzzle board position then
-                                        Just position
 
-                                    else
-                                        Nothing
-
-                                _ ->
-                                    Nothing
-                        )
-            )
-        |> Set.fromList
+-- ALTERAÇÕES
+--
+-- Toda alteração é uma função `Cell -> Cell` aplicada numa posição por
+-- `updateCell`. Cada função decide sozinha o que fazer com cada tipo de
+-- casa (o `case` é exaustivo), e as regras de "o que está travado" ficam
+-- escritas uma vez só, aqui.
 
 
-lakesInSun : Puzzle -> Board -> Set Position
-lakesInSun puzzle board =
-    puzzle.lakes
-        |> List.filter (\position -> not (shadowAt puzzle board position))
-        |> Set.fromList
-
-
-isSolved : Puzzle -> Board -> Bool
-isSolved puzzle board =
+updateCell : Position -> (Cell -> Cell) -> Board -> Board
+updateCell ( row, col ) change ((Board size array) as board) =
     let
-        rowsExact =
-            List.range 0 (puzzle.size - 1)
-                |> List.all (\row -> rowStatus puzzle board row == Exact)
-
-        columnsExact =
-            List.range 0 (puzzle.size - 1)
-                |> List.all (\col -> colStatus puzzle board col == Exact)
+        index =
+            row * size + col
     in
-    Set.isEmpty (towersInShadow puzzle board)
-        && Set.isEmpty (lakesInSun puzzle board)
-        && rowsExact
-        && columnsExact
+    if row < 0 || col < 0 || row >= size || col >= size then
+        board
+
+    else
+        case Array.get index array of
+            Just cell ->
+                Board size (Array.set index (change cell) array)
+
+            Nothing ->
+                board
 
 
-cycleCell : Position -> Int -> Board -> Board
-cycleCell position size board =
-    case cellAt position size board of
-        Undecided ->
-            setCell size position (Decided Player (Tower Low)) board
+{-| O clique numa casa: não decidida -> torre 1 -> 2 -> 3 -> chão -> torre 1.
+Só casas do jogador mudam.
+-}
+cycleCell : Position -> Board -> Board
+cycleCell position =
+    updateCell position
+        (\cell ->
+            case cell of
+                Undecided ->
+                    Decided Player (Tower Low)
 
-        Decided Player content ->
-            let
-                next =
-                    case content of
-                        Ground ->
-                            Tower Low
+                Decided Player content ->
+                    Decided Player (nextContent content)
 
-                        Tower Low ->
-                            Tower Mid
-
-                        Tower Mid ->
-                            Tower High
-
-                        Tower High ->
-                            Ground
-            in
-            setCell size position (Decided Player next) board
-
-        _ ->
-            board
+                _ ->
+                    cell
+        )
 
 
-setPlayerContent : Position -> Int -> Content -> Board -> Board
-setPlayerContent position size content board =
-    case cellAt position size board of
-        Undecided ->
-            setCell size position (Decided Player content) board
+nextContent : Content -> Content
+nextContent content =
+    case content of
+        Ground ->
+            Tower Low
 
-        Decided Player _ ->
-            setCell size position (Decided Player content) board
+        Tower Low ->
+            Tower Mid
 
-        _ ->
-            board
+        Tower Mid ->
+            Tower High
 
-
-clearPlayerCell : Position -> Int -> Board -> Board
-clearPlayerCell position size board =
-    case cellAt position size board of
-        Decided Player _ ->
-            setCell size position Undecided board
-
-        _ ->
-            board
+        Tower High ->
+            Ground
 
 
-revealHint : Position -> Content -> Int -> Board -> Board
-revealHint position content size board =
-    case cellAt position size board of
-        Lake ->
-            board
+placeContent : Position -> Content -> Board -> Board
+placeContent position content =
+    updateCell position
+        (\cell ->
+            case cell of
+                Undecided ->
+                    Decided Player content
 
-        Decided Given _ ->
-            board
+                Decided Player _ ->
+                    Decided Player content
 
-        _ ->
-            setCell size position (Decided Prolog content) board
+                _ ->
+                    cell
+        )
 
 
-revealSolution : List (List Int) -> Puzzle -> Board -> Board
-revealSolution towers puzzle board =
-    List.range 0 (puzzle.size - 1)
-        |> List.concatMap
-            (\row ->
-                List.range 0 (puzzle.size - 1)
-                    |> List.map (\col -> ( row, col ))
-            )
-        |> List.foldl
-            (\(( row, col ) as position) current ->
-                let
-                    value =
-                        towers
-                            |> List.drop row
-                            |> List.head
-                            |> Maybe.andThen (List.drop col >> List.head)
-                            |> Maybe.withDefault 0
-                in
-                case cellAt position puzzle.size current of
-                    Lake ->
-                        current
+clearCell : Position -> Board -> Board
+clearCell position =
+    updateCell position
+        (\cell ->
+            case cell of
+                Decided Player _ ->
+                    Undecided
 
-                    Decided Given _ ->
-                        current
+                _ ->
+                    cell
+        )
 
-                    _ ->
-                        setCell puzzle.size position (Decided Prolog (contentFromInt value)) current
-            )
-            board
+
+{-| Uma casa revelada pelo Prolog (dica ou solução). Ela pode substituir uma
+decisão do jogador, mas nunca um lago ou uma casa revelada pelo puzzle.
+-}
+revealCell : Position -> Content -> Board -> Board
+revealCell position content =
+    updateCell position
+        (\cell ->
+            case cell of
+                Lake ->
+                    cell
+
+                Decided Given _ ->
+                    cell
+
+                _ ->
+                    Decided Prolog content
+        )
+
+
+revealSolution : List (List Content) -> Board -> Board
+revealSolution solution board =
+    solution
+        |> List.indexedMap
+            (\row line -> List.indexedMap (\col content -> ( ( row, col ), content )) line)
+        |> List.concat
+        |> List.foldl (\( position, content ) -> revealCell position content) board

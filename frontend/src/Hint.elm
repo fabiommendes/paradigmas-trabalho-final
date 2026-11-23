@@ -6,12 +6,20 @@ module Hint exposing
     , explanation
     )
 
-{-| Tipos e textos das dicas. Este módulo continua independente da interface.
+{-| Tipos e textos das dicas.
+
+As dicas são calculadas pelo Prolog; aqui elas viram valores Elm e, depois,
+frases em português. O módulo é puro e não conhece HTML: `explanation`
+devolve só o texto, e a tela decide como mostrá-lo.
+
 -}
 
-import Ocaso exposing (Content(..), Height(..))
+import Ocaso exposing (Content(..))
 
 
+{-| As quatro regras do jogo, como o Prolog as cita ao explicar uma dica.
+`RowRule` e `ColRule` carregam o índice (a partir de 0) da linha ou coluna.
+-}
 type Rule
     = SunRule
     | LakeRule
@@ -19,17 +27,28 @@ type Rule
     | ColRule Int
 
 
+{-| Como o Prolog chegou à casa: só pela propagação das restrições, ou
+precisando testar hipóteses (busca).
+-}
 type Method
     = Propagation
     | Search
 
 
+{-| Um valor que a casa não pode ter e as regras que o excluem. Lista vazia
+quer dizer que só a combinação de todas as regras o exclui.
+-}
 type alias Exclusion =
     { value : Content
     , rules : List Rule
     }
 
 
+{-| Cada forma de dica carrega só os dados que fazem sentido para ela: uma
+dedução tem método e exclusões, um erro tem as regras violadas, e
+`AllDone` não tem nada. Com um único record cheio de `Maybe`, a tela
+teria de lidar com combinações que nunca acontecem.
+-}
 type Hint
     = Deduce
         { row : Int
@@ -85,7 +104,7 @@ explanation hint =
                 ++ positionText mistake.row
                 ++ ", coluna "
                 ++ positionText mistake.col
-                ++ " não pode fazer parte de uma solução. "
+                ++ " está errada: ela é excluída "
                 ++ ruleExplanation mistake.rules
 
         AllDone ->
@@ -96,15 +115,19 @@ exclusionText : Exclusion -> String
 exclusionText exclusion =
     "A opção "
         ++ contentText exclusion.value
-        ++ " é impossível por "
+        ++ " é impossível "
         ++ ruleExplanation exclusion.rules
 
 
+{-| Completa frases como "é impossível ..." e "ela é excluída ...". A lista
+vazia vem do Prolog quando nenhuma regra isolada nem nenhum par de regras
+basta para excluir o valor.
+-}
 ruleExplanation : List Rule -> String
 ruleExplanation rules =
     case rules of
         [] ->
-            "todas as regras consideradas em conjunto."
+            "pela combinação de todas as regras."
 
         _ ->
             String.join " e " (List.map ruleText rules) ++ "."
@@ -114,16 +137,16 @@ ruleText : Rule -> String
 ruleText rule =
     case rule of
         SunRule ->
-            "a regra do Sol"
+            "pela regra do Sol"
 
         LakeRule ->
-            "a regra dos lagos"
+            "pela regra dos lagos"
 
         RowRule index ->
-            "a pista da linha " ++ positionText index
+            "pela pista da linha " ++ positionText index
 
         ColRule index ->
-            "a pista da coluna " ++ positionText index
+            "pela pista da coluna " ++ positionText index
 
 
 contentText : Content -> String
@@ -133,20 +156,7 @@ contentText content =
             "chão"
 
         Tower height ->
-            "uma torre de altura " ++ String.fromInt (heightValue height)
-
-
-heightValue : Height -> Int
-heightValue height =
-    case height of
-        Low ->
-            1
-
-        Mid ->
-            2
-
-        High ->
-            3
+            "uma torre de altura " ++ String.fromInt (Ocaso.heightValue height)
 
 
 positionText : Int -> String

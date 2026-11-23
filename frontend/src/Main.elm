@@ -1,7 +1,19 @@
 module Main exposing (main)
 
+{-| Interface do Ocaso, na Arquitetura Elm.
+
+  - `Model`: o estado inteiro da aplicação, num valor imutável;
+  - `Msg`: tudo o que pode acontecer (cliques, teclas, respostas HTTP);
+  - `update`: recebe uma `Msg` e o `Model` e devolve o novo `Model` e os
+    efeitos (requisições) a executar;
+  - `view`: desenha o `Model`. A tela é uma função do estado.
+
+As regras do jogo ficam em `Ocaso`, os textos das dicas em `Hint` e o HTTP
+em `Api`. Este módulo só liga as peças.
+
+-}
+
 import Api exposing (Difficulty(..))
-import Array
 import Browser
 import Browser.Events
 import Hint exposing (Hint(..))
@@ -9,8 +21,12 @@ import Html exposing (Html, aside, button, div, footer, h1, header, input, label
 import Html.Attributes exposing (attribute, checked, class, classList, disabled, style, type_, value)
 import Html.Events exposing (onCheck, onClick)
 import Json.Decode as Decode exposing (Decoder)
-import Ocaso exposing (Board, Cell(..), ClueStatus(..), Content(..), Height(..), Position, Puzzle, Source(..), Sun(..))
-import Set exposing (Set)
+import Ocaso exposing (Analysis, Board, Cell(..), ClueStatus(..), Content(..), Height(..), Position, Puzzle, RowClue, Source(..), Sun(..))
+import Set
+
+
+
+-- MAIN
 
 
 main : Program Flags Model Msg
@@ -23,11 +39,25 @@ main =
         }
 
 
+
+-- MODEL
+
+
+{-| Dados que o main.js entrega na inicialização.
+-}
 type alias Flags =
     { darkTheme : Bool
     }
 
 
+{-| Qual requisição está em andamento, se alguma.
+
+Com um `Bool loading` não daria para saber o que mostrar ("gerando",
+"resolvendo"...), e nada impediria dois pedidos ao mesmo tempo. Com este
+tipo, a mensagem de espera sai de um `case`, e os botões ficam desativados
+enquanto o valor não for `Idle`.
+
+-}
 type Pending
     = Idle
     | Generating
@@ -35,17 +65,56 @@ type Pending
     | RequestingHint
 
 
-type alias Model =
-    { puzzle : Maybe Puzzle
+{-| Uma partida em andamento.
+
+Puzzle, tabuleiro, seleção, histórico e dica vivem e morrem juntos: quando
+chega um puzzle novo, tudo isso é recriado de uma vez. Por isso ficam num
+mesmo registro, e o `Model` guarda um `Maybe Game`. Assim não existe
+"tabuleiro sem puzzle" nem "seleção sem tabuleiro".
+
+-}
+type alias Game =
+    { puzzle : Puzzle
     , board : Board
     , selected : Maybe Position
+    , history : List Board
+    , hint : Maybe Hint
+    }
+
+
+type alias Model =
+    { game : Maybe Game
     , difficulty : Difficulty
     , pending : Pending
     , darkTheme : Bool
     , error : Maybe String
-    , hint : Maybe Hint
-    , history : List Board
     }
+
+
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    ( { game = Nothing
+      , difficulty = Medium
+      , pending = Generating
+      , darkTheme = flags.darkTheme
+      , error = Nothing
+      }
+    , Api.generate Medium GotPuzzle
+    )
+
+
+newGame : Puzzle -> Game
+newGame puzzle =
+    { puzzle = puzzle
+    , board = Ocaso.boardFromPuzzle puzzle
+    , selected = Nothing
+    , history = []
+    , hint = Nothing
+    }
+
+
+
+-- UPDATE
 
 
 type Msg
@@ -59,54 +128,22 @@ type Msg
     | HintRequested
     | GotHint (Result String Hint)
     | SolveRequested
-    | GotSolution (Result String (List (List Int)))
+    | GotSolution (Result String (List (List Content)))
     | ThemeToggled Bool
     | ErrorDismissed
-
-
-init : Flags -> ( Model, Cmd Msg )
-init flags =
-    ( { puzzle = Nothing
-      , board = Ocaso.empty 5
-      , selected = Nothing
-      , difficulty = Medium
-      , pending = Generating
-      , darkTheme = flags.darkTheme
-      , error = Nothing
-      , hint = Nothing
-      , history = []
-      }
-    , Api.generate Medium GotPuzzle
-    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NewGame difficulty ->
-            if model.pending /= Idle then
-                ( model, Cmd.none )
-
-            else
-                ( { model
-                    | difficulty = difficulty
-                    , pending = Generating
-                    , error = Nothing
-                    , hint = Nothing
-                  }
+            whenIdle model
+                ( { model | difficulty = difficulty, pending = Generating, error = Nothing }
                 , Api.generate difficulty GotPuzzle
                 )
 
         GotPuzzle (Ok puzzle) ->
-            ( { model
-                | puzzle = Just puzzle
-                , board = Ocaso.boardFromPuzzle puzzle
-                , selected = Nothing
-                , pending = Idle
-                , error = Nothing
-                , hint = Nothing
-                , history = []
-              }
+            ( { model | game = Just (newGame puzzle), pending = Idle, error = Nothing }
             , Cmd.none
             )
 
@@ -114,123 +151,57 @@ update msg model =
             ( failed error model, Cmd.none )
 
         CellClicked position ->
-            let
-                selected =
-                    { model | selected = Just position }
-            in
-            ( editAt position Ocaso.cycleCell selected, Cmd.none )
+            ( playing (\game -> edit (Ocaso.cycleCell position) { game | selected = Just position }) model
+            , Cmd.none
+            )
 
         ContentSelected content ->
-            ( editSelected (\position size board -> Ocaso.setPlayerContent position size content board) model
+            ( playing (editSelected (\position -> Ocaso.placeContent position content)) model
             , Cmd.none
             )
 
         ErasePressed ->
-            ( editSelected Ocaso.clearPlayerCell model, Cmd.none )
+            ( playing (editSelected Ocaso.clearCell) model, Cmd.none )
 
         UndoRequested ->
-            if model.pending /= Idle then
-                ( model, Cmd.none )
-
-            else
-                case model.history of
-                    previous :: rest ->
-                        ( { model | board = previous, history = rest, hint = Nothing }
-                        , Cmd.none
-                        )
-
-                    [] ->
-                        ( model, Cmd.none )
+            ( playing undo model, Cmd.none )
 
         MoveSelection dRow dCol ->
-            let
-                size =
-                    model.puzzle
-                        |> Maybe.map .size
-                        |> Maybe.withDefault 5
-
-                move ( row, col ) =
-                    ( modBy size (row + dRow), modBy size (col + dCol) )
-            in
-            ( { model
-                | selected =
-                    Just
-                        (model.selected
-                            |> Maybe.map move
-                            |> Maybe.withDefault ( 0, 0 )
-                        )
-              }
-            , Cmd.none
-            )
+            ( playing (moveSelection dRow dCol) model, Cmd.none )
 
         HintRequested ->
-            case ( model.puzzle, model.pending ) of
-                ( Just puzzle, Idle ) ->
-                    ( { model | pending = RequestingHint, error = Nothing, hint = Nothing }
-                    , Api.hint puzzle model.board GotHint
+            withIdleGame model
+                (\game ->
+                    ( { model | pending = RequestingHint, error = Nothing }
+                    , Api.hint game.puzzle game.board GotHint
                     )
-
-                _ ->
-                    ( model, Cmd.none )
+                )
 
         GotHint (Ok hint) ->
-            case ( model.puzzle, hint ) of
-                ( Just puzzle, Deduce deduction ) ->
-                    let
-                        position =
-                            ( deduction.row, deduction.col )
-
-                        board =
-                            Ocaso.revealHint position deduction.value puzzle.size model.board
-
-                        updated =
-                            withBoardIfChanged board model
-                    in
-                    ( { updated | selected = Just position, hint = Just hint, pending = Idle }
-                    , Cmd.none
-                    )
-
-                ( _, Mistake mistake ) ->
-                    ( { model
-                        | selected = Just ( mistake.row, mistake.col )
-                        , hint = Just hint
-                        , pending = Idle
-                      }
-                    , Cmd.none
-                    )
-
-                _ ->
-                    ( { model | hint = Just hint, pending = Idle }, Cmd.none )
+            ( updateGame (applyHint hint) { model | pending = Idle }, Cmd.none )
 
         GotHint (Err error) ->
             ( failed error model, Cmd.none )
 
         SolveRequested ->
-            case ( model.puzzle, model.pending ) of
-                ( Just puzzle, Idle ) ->
-                    ( { model | pending = Solving, error = Nothing, hint = Nothing }
-                    , Api.solve puzzle GotSolution
+            withIdleGame model
+                (\game ->
+                    ( { model | pending = Solving, error = Nothing }
+                    , Api.solve game.puzzle GotSolution
                     )
+                )
 
-                _ ->
-                    ( model, Cmd.none )
-
-        GotSolution (Ok towers) ->
-            case model.puzzle of
-                Just puzzle ->
-                    let
-                        board =
-                            Ocaso.revealSolution towers puzzle model.board
-                    in
-                    ( withBoardIfChanged board { model | pending = Idle }, Cmd.none )
-
-                Nothing ->
-                    ( { model | pending = Idle }, Cmd.none )
+        GotSolution (Ok solution) ->
+            ( updateGame (edit (Ocaso.revealSolution solution)) { model | pending = Idle }
+            , Cmd.none
+            )
 
         GotSolution (Err error) ->
             ( failed error model, Cmd.none )
 
         ThemeToggled dark ->
+            -- A troca de cores é feita pelo CSS (theme-controller do
+            -- daisyUI); aqui só guardamos o estado do checkbox.
             ( { model | darkTheme = dark }, Cmd.none )
 
         ErrorDismissed ->
@@ -242,38 +213,120 @@ failed error model =
     { model | pending = Idle, error = Just error }
 
 
-editSelected : (Position -> Int -> Board -> Board) -> Model -> Model
-editSelected change model =
-    case model.selected of
-        Just position ->
-            editAt position change model
-
-        Nothing ->
-            model
-
-
-editAt : Position -> (Position -> Int -> Board -> Board) -> Model -> Model
-editAt position change model =
-    case ( model.puzzle, model.pending ) of
-        ( Just puzzle, Idle ) ->
-            withBoardIfChanged (change position puzzle.size model.board) model
-
-        _ ->
-            model
-
-
-withBoardIfChanged : Board -> Model -> Model
-withBoardIfChanged board model =
-    if Array.toList board == Array.toList model.board then
-        model
+{-| Executa o passo só se não houver requisição em andamento.
+-}
+whenIdle : Model -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+whenIdle model next =
+    if model.pending == Idle then
+        next
 
     else
-        case model.puzzle of
-            Just _ ->
-                { model | board = board, history = model.board :: model.history, hint = Nothing }
+        ( model, Cmd.none )
 
-            Nothing ->
-                model
+
+withIdleGame : Model -> (Game -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
+withIdleGame model next =
+    case model.game of
+        Just game ->
+            whenIdle model (next game)
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+updateGame : (Game -> Game) -> Model -> Model
+updateGame change model =
+    { model | game = Maybe.map change model.game }
+
+
+{-| Como `updateGame`, mas só quando o jogador pode mexer no tabuleiro (nada
+em andamento). Um clique durante uma requisição é ignorado.
+-}
+playing : (Game -> Game) -> Model -> Model
+playing change model =
+    if model.pending == Idle then
+        updateGame change model
+
+    else
+        model
+
+
+{-| Aplica uma alteração ao tabuleiro. Se algo mudou, o tabuleiro anterior
+vai para o histórico (para desfazer) e a dica antiga deixa de valer.
+
+Desfazer é simples porque os dados são imutáveis: guardar o tabuleiro
+anterior é só guardar uma referência a ele; nada o modifica depois.
+
+-}
+edit : (Board -> Board) -> Game -> Game
+edit change game =
+    let
+        board =
+            change game.board
+    in
+    if Ocaso.cells board == Ocaso.cells game.board then
+        game
+
+    else
+        { game | board = board, history = game.board :: game.history, hint = Nothing }
+
+
+editSelected : (Position -> Board -> Board) -> Game -> Game
+editSelected change game =
+    case game.selected of
+        Just position ->
+            edit (change position) game
+
+        Nothing ->
+            game
+
+
+undo : Game -> Game
+undo game =
+    case game.history of
+        previous :: rest ->
+            { game | board = previous, history = rest, hint = Nothing }
+
+        [] ->
+            game
+
+
+{-| Move a seleção com as setas; `modBy` faz a seleção dar a volta nas bordas.
+-}
+moveSelection : Int -> Int -> Game -> Game
+moveSelection dRow dCol game =
+    let
+        size =
+            game.puzzle.size
+
+        move ( row, col ) =
+            ( modBy size (row + dRow), modBy size (col + dCol) )
+    in
+    { game | selected = Just (Maybe.withDefault ( 0, 0 ) (Maybe.map move game.selected)) }
+
+
+applyHint : Hint -> Game -> Game
+applyHint hint game =
+    case hint of
+        Deduce deduction ->
+            let
+                position =
+                    ( deduction.row, deduction.col )
+
+                revealed =
+                    edit (Ocaso.revealCell position deduction.value) game
+            in
+            { revealed | selected = Just position, hint = Just hint }
+
+        Mistake mistake ->
+            { game | selected = Just ( mistake.row, mistake.col ), hint = Just hint }
+
+        AllDone ->
+            { game | hint = Just hint }
+
+
+
+-- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
@@ -281,6 +334,9 @@ subscriptions _ =
     Browser.Events.onKeyDown keyDecoder
 
 
+{-| Para as teclas que não interessam, o decoder falha; um decoder que falha
+não gera mensagem, então o `update` nem fica sabendo delas.
+-}
 keyDecoder : Decoder Msg
 keyDecoder =
     Decode.field "key" Decode.string
@@ -311,6 +367,9 @@ keyToMsg key =
         "." ->
             Decode.succeed (ContentSelected Ground)
 
+        "0" ->
+            Decode.succeed (ContentSelected Ground)
+
         "z" ->
             Decode.succeed UndoRequested
 
@@ -318,17 +377,18 @@ keyToMsg key =
             Decode.succeed UndoRequested
 
         _ ->
-            case String.toInt key of
-                Just 0 ->
-                    Decode.succeed (ContentSelected Ground)
+            String.toInt key
+                |> Maybe.andThen Ocaso.heightFromInt
+                |> Maybe.map (Tower >> ContentSelected >> Decode.succeed)
+                |> Maybe.withDefault (Decode.fail "tecla ignorada")
 
-                Just value ->
-                    Ocaso.heightFromInt value
-                        |> Maybe.map (Tower >> ContentSelected >> Decode.succeed)
-                        |> Maybe.withDefault (Decode.fail "tecla ignorada")
 
-                Nothing ->
-                    Decode.fail "tecla ignorada"
+
+-- VIEW
+--
+-- As classes são semânticas ("board", "cell--shadow"); a aparência fica
+-- toda em src/style.css. Os modificadores (com `--`) são ligados com
+-- `classList`.
 
 
 view : Model -> Html Msg
@@ -379,6 +439,8 @@ kbd =
     Html.node "kbd"
 
 
+{-| Checkbox `theme-controller` do daisyUI: marcado, o CSS aplica o tema escuro.
+-}
 viewThemeToggle : Model -> Html Msg
 viewThemeToggle model =
     label [ class "theme-toggle", attribute "aria-label" "Alternar tema claro/escuro" ]
@@ -416,31 +478,33 @@ viewDifficulty model =
 
 viewStatus : Model -> Html Msg
 viewStatus model =
-    case ( model.error, model.pending, model.puzzle ) of
-        ( Just error, _, _ ) ->
+    case ( model.error, model.pending ) of
+        ( Just error, _ ) ->
             div [ class "message message--error" ]
                 [ span [] [ text error ]
                 , button [ class "message-close", onClick ErrorDismissed ] [ text "×" ]
                 ]
 
-        ( Nothing, Generating, _ ) ->
+        ( Nothing, Generating ) ->
             loadingMessage "O Prolog está gerando um puzzle..."
 
-        ( Nothing, Solving, _ ) ->
+        ( Nothing, Solving ) ->
             loadingMessage "O Prolog está resolvendo..."
 
-        ( Nothing, RequestingHint, _ ) ->
+        ( Nothing, RequestingHint ) ->
             loadingMessage "O Prolog está analisando as jogadas..."
 
-        ( Nothing, Idle, Just puzzle ) ->
-            if Ocaso.isSolved puzzle model.board then
-                div [ class "message message--success" ] [ text "Puzzle resolvido!" ]
+        ( Nothing, Idle ) ->
+            case model.game of
+                Just game ->
+                    if (Ocaso.analyze game.puzzle game.board).solved then
+                        div [ class "message message--success" ] [ text "Puzzle resolvido!" ]
 
-            else
-                text ""
+                    else
+                        text ""
 
-        ( Nothing, Idle, Nothing ) ->
-            text ""
+                Nothing ->
+                    text ""
 
 
 loadingMessage : String -> Html Msg
@@ -453,14 +517,17 @@ loadingMessage message =
 
 viewBoard : Model -> Html Msg
 viewBoard model =
-    case model.puzzle of
+    case model.game of
         Nothing ->
             div [ class "board-loading" ] [ text "Preparando o tabuleiro..." ]
 
-        Just puzzle ->
+        Just game ->
             let
+                analysis =
+                    Ocaso.analyze game.puzzle game.board
+
                 columnTemplate =
-                    "repeat(" ++ String.fromInt puzzle.size ++ ", minmax(0, 1fr))"
+                    "repeat(" ++ String.fromInt game.puzzle.size ++ ", minmax(0, 1fr))"
             in
             section [ class "board-area", attribute "aria-label" "Tabuleiro do Ocaso" ]
                 [ div [ class "column-clues-row" ]
@@ -469,55 +536,42 @@ viewBoard model =
                         [ class "board-grid board-grid--columns"
                         , style "grid-template-columns" columnTemplate
                         ]
-                        (List.range 0 (puzzle.size - 1)
-                            |> List.map (viewColumnClue model puzzle)
+                        (List.indexedMap viewColumnClue
+                            (List.map2 Tuple.pair game.puzzle.colClues analysis.colStatuses)
                         )
                     , div [ class "annotation-spacer" ] []
                     ]
                 , div [ class "board-rows" ]
-                    (List.range 0 (puzzle.size - 1)
-                        |> List.map (viewRow model puzzle columnTemplate)
+                    (List.map4 (viewRow game analysis columnTemplate)
+                        (List.range 0 (game.puzzle.size - 1))
+                        game.puzzle.rowClues
+                        analysis.rowStatuses
+                        (Ocaso.rows game.board)
                     )
                 ]
 
 
-viewColumnClue : Model -> Puzzle -> Int -> Html Msg
-viewColumnClue model puzzle col =
-    let
-        clue =
-            puzzle.cols
-                |> List.drop col
-                |> List.head
-                |> Maybe.withDefault 0
-    in
+viewColumnClue : Int -> ( Int, ClueStatus ) -> Html Msg
+viewColumnClue col ( clue, status ) =
     div
         [ class "clue"
-        , class (clueClass (Ocaso.colStatus puzzle model.board col))
+        , class (clueClass status)
         , attribute "aria-label" ("Soma da coluna " ++ String.fromInt (col + 1))
         ]
         [ text (String.fromInt clue) ]
 
 
-viewRow : Model -> Puzzle -> String -> Int -> Html Msg
-viewRow model puzzle columnTemplate row =
+{-| Uma linha do tabuleiro: o sol fica no lado de onde vem e a pista de
+sombra no lado para onde a sombra vai.
+-}
+viewRow : Game -> Analysis -> String -> Int -> RowClue -> ClueStatus -> List ( Position, Cell ) -> Html Msg
+viewRow game analysis columnTemplate row rowClue status line =
     let
-        sun =
-            puzzle.suns
-                |> List.drop row
-                |> List.head
-                |> Maybe.withDefault West
-
-        clue =
-            puzzle.rows
-                |> List.drop row
-                |> List.head
-                |> Maybe.withDefault 0
-
         sunMarker =
             span
                 [ class "sun-marker"
                 , attribute "aria-label"
-                    (case sun of
+                    (case rowClue.sun of
                         West ->
                             "Sol a oeste"
 
@@ -527,83 +581,58 @@ viewRow model puzzle columnTemplate row =
                 ]
                 [ text "☀" ]
 
-        rowClue =
+        shadeClue =
             span
                 [ class "clue"
-                , class (clueClass (Ocaso.rowStatus puzzle model.board row))
+                , class (clueClass status)
                 , attribute "aria-label" ("Casas sombreadas na linha " ++ String.fromInt (row + 1))
                 ]
-                [ text (String.fromInt clue) ]
+                [ text (String.fromInt rowClue.shade) ]
 
-        cells =
-            div
-                [ class "board-grid board-grid--row"
-                , style "grid-template-columns" columnTemplate
-                , style "height" ("calc(var(--board-size) / " ++ String.fromInt puzzle.size ++ ")")
-                ]
-                (List.range 0 (puzzle.size - 1)
-                    |> List.map
-                        (\col ->
-                            viewCell model puzzle ( row, col )
-                        )
-                )
-
-        leftAnnotation =
-            case sun of
+        ( left, right ) =
+            case rowClue.sun of
                 West ->
-                    sunMarker
+                    ( sunMarker, shadeClue )
 
                 East ->
-                    rowClue
-
-        rightAnnotation =
-            case sun of
-                West ->
-                    rowClue
-
-                East ->
-                    sunMarker
+                    ( shadeClue, sunMarker )
     in
     div [ class "board-row" ]
-        [ div [ class "row-annotation" ] [ leftAnnotation ]
-        , cells
-        , div [ class "row-annotation" ] [ rightAnnotation ]
+        [ div [ class "row-annotation" ] [ left ]
+        , div
+            [ class "board-grid board-grid--row"
+            , style "grid-template-columns" columnTemplate
+            , style "height" ("calc(var(--board-size) / " ++ String.fromInt game.puzzle.size ++ ")")
+            ]
+            (List.map (viewCell game analysis) line)
+        , div [ class "row-annotation" ] [ right ]
         ]
 
 
-viewCell : Model -> Puzzle -> Position -> Html Msg
-viewCell model puzzle (( row, col ) as position) =
-    let
-        cell =
-            Ocaso.cellAt position puzzle.size model.board
-
-        shaded =
-            Ocaso.shadowAt puzzle model.board position
-
-        errors =
-            Set.member position (Ocaso.towersInShadow puzzle model.board)
-                || Set.member position (Ocaso.lakesInSun puzzle model.board)
-
-        labelText =
-            "Linha "
+viewCell : Game -> Analysis -> ( Position, Cell ) -> Html Msg
+viewCell game analysis ( ( row, col ) as position, cell ) =
+    button
+        [ class "cell"
+        , classList
+            [ ( "cell--selected", game.selected == Just position )
+            , ( "cell--shadow", Set.member position analysis.shaded )
+            , ( "cell--lake", cell == Lake )
+            , ( "cell--error"
+              , Set.member position analysis.towersInShadow
+                    || Set.member position analysis.lakesInSun
+              )
+            , ( "cell--given", sourceIs Given cell )
+            , ( "cell--player", sourceIs Player cell )
+            , ( "cell--prolog", sourceIs Prolog cell )
+            ]
+        , attribute "aria-label"
+            ("Linha "
                 ++ String.fromInt (row + 1)
                 ++ ", coluna "
                 ++ String.fromInt (col + 1)
                 ++ ": "
                 ++ cellDescription cell
-    in
-    button
-        [ class "cell"
-        , classList
-            [ ( "cell--selected", model.selected == Just position )
-            , ( "cell--shadow", shaded )
-            , ( "cell--lake", cell == Lake )
-            , ( "cell--error", errors )
-            , ( "cell--given", sourceIs Given cell )
-            , ( "cell--player", sourceIs Player cell )
-            , ( "cell--prolog", sourceIs Prolog cell )
-            ]
-        , attribute "aria-label" labelText
+            )
         , onClick (CellClicked position)
         ]
         [ viewCellContent cell ]
@@ -624,15 +653,7 @@ viewCellContent cell =
         Decided _ (Tower height) ->
             let
                 count =
-                    case height of
-                        Low ->
-                            1
-
-                        Mid ->
-                            2
-
-                        High ->
-                            3
+                    Ocaso.heightValue height
             in
             div
                 [ class "tower"
@@ -665,20 +686,7 @@ cellDescription cell =
             "chão"
 
         Decided _ (Tower height) ->
-            "torre de altura " ++ String.fromInt (heightNumber height)
-
-
-heightNumber : Height -> Int
-heightNumber height =
-    case height of
-        Low ->
-            1
-
-        Mid ->
-            2
-
-        High ->
-            3
+            "torre de altura " ++ String.fromInt (Ocaso.heightValue height)
 
 
 clueClass : ClueStatus -> String
@@ -697,51 +705,45 @@ clueClass status =
 viewNumberPad : Model -> Html Msg
 viewNumberPad model =
     let
-        numberButton height label =
-            button
-                [ class "number-key"
-                , disabled (model.pending /= Idle || model.selected == Nothing)
-                , onClick (ContentSelected (Tower height))
-                ]
-                [ text label ]
+        noSelection =
+            model.game
+                |> Maybe.andThen .selected
+                |> (==) Nothing
+
+        inactive =
+            model.pending /= Idle || noSelection
+
+        key extraClass msg label =
+            button [ class extraClass, disabled inactive, onClick msg ] [ text label ]
     in
     div [ class "number-pad" ]
-        [ numberButton Low "1"
-        , numberButton Mid "2"
-        , numberButton High "3"
-        , button
-            [ class "number-key number-key--ground"
-            , disabled (model.pending /= Idle || model.selected == Nothing)
-            , onClick (ContentSelected Ground)
-            ]
-            [ text "Chão" ]
-        , button
-            [ class "erase-key"
-            , disabled (model.pending /= Idle || model.selected == Nothing)
-            , onClick ErasePressed
-            ]
-            [ text "⌫ Apagar" ]
+        [ key "number-key" (ContentSelected (Tower Low)) "1"
+        , key "number-key" (ContentSelected (Tower Mid)) "2"
+        , key "number-key" (ContentSelected (Tower High)) "3"
+        , key "number-key number-key--ground" (ContentSelected Ground) "Chão"
+        , key "erase-key" ErasePressed "⌫ Apagar"
         ]
 
 
 viewActions : Model -> Html Msg
 viewActions model =
+    let
+        busy =
+            model.pending /= Idle || model.game == Nothing
+
+        nothingToUndo =
+            model.game
+                |> Maybe.map (.history >> List.isEmpty)
+                |> Maybe.withDefault True
+    in
     div [ class "actions" ]
-        [ button
-            [ class "action-button action-button--hint"
-            , disabled (model.pending /= Idle || model.puzzle == Nothing)
-            , onClick HintRequested
-            ]
+        [ button [ class "action-button action-button--hint", disabled busy, onClick HintRequested ]
             [ text "Pedir dica" ]
-        , button
-            [ class "action-button action-button--solve"
-            , disabled (model.pending /= Idle || model.puzzle == Nothing)
-            , onClick SolveRequested
-            ]
+        , button [ class "action-button action-button--solve", disabled busy, onClick SolveRequested ]
             [ text "Resolver" ]
         , button
             [ class "action-button action-button--undo"
-            , disabled (model.pending /= Idle || List.isEmpty model.history)
+            , disabled (model.pending /= Idle || nothingToUndo)
             , onClick UndoRequested
             ]
             [ text "Desfazer (Z)" ]
@@ -750,7 +752,7 @@ viewActions model =
 
 viewHint : Model -> Html Msg
 viewHint model =
-    case model.hint of
+    case Maybe.andThen .hint model.game of
         Just hint ->
             p [ class "hint-explanation" ] [ text (Hint.explanation hint) ]
 
