@@ -1,6 +1,6 @@
 # Ocaso
 
-Jogo de lógica sobre torres, lagos e sombras ao entardecer, feito para o
+Jogo de lógica sobre torres, lagos e sombras ao entardecer, jogo feito do 0 para o
 trabalho final de Paradigmas de Programação. O Prolog cria, resolve e
 explica os puzzles; o Elm desenha a interface; o Python só faz a ponte.
 
