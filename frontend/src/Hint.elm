@@ -6,19 +6,19 @@ module Hint exposing
     , explanation
     )
 
-{-| Tipos e textos das dicas.
+{-| Tipos e textos das dicas
 
-As dicas são calculadas pelo Prolog; aqui elas viram valores Elm e, depois,
-frases em português. O módulo é puro e não conhece HTML: `explanation`
-devolve só o texto, e a tela decide como mostrá-lo.
+as dicas são calculadas pelo Prolog, aqui elas viram valores Elm e, depois,
+frases em português. o módulo não conhece HTML: `explanation`
+devolve só o texto, e a tela decide como mostrá-lo
 
 -}
 
 import Ocaso exposing (Content(..))
 
 
-{-| As quatro regras do jogo, como o Prolog as cita ao explicar uma dica.
-`RowRule` e `ColRule` carregam o índice (a partir de 0) da linha ou coluna.
+{-| as quatro regras do jogo, como o Prolog as cita ao explicar uma dica.
+`RowRule` e `ColRule` carregam o índice (a partir de 0) da linha ou coluna
 -}
 type Rule
     = SunRule
@@ -27,16 +27,16 @@ type Rule
     | ColRule Int
 
 
-{-| Como o Prolog chegou à casa: só pela propagação das restrições, ou
-precisando testar hipóteses (busca).
+{-| como o Prolog chegou à casa, só pela propagação das restrições, ou
+precisando testar hipóteses (busca)
 -}
 type Method
     = Propagation
     | Search
 
 
-{-| Um valor que a casa não pode ter e as regras que o excluem. Lista vazia
-quer dizer que só a combinação de todas as regras o exclui.
+{-| um valor que a casa não pode ter e as regras que o excluem. lista vazia
+quer dizer que só a combinação de todas as regras o exclui
 -}
 type alias Exclusion =
     { value : Content
@@ -44,10 +44,10 @@ type alias Exclusion =
     }
 
 
-{-| Cada forma de dica carrega só os dados que fazem sentido para ela: uma
+{-| cada forma de dica carrega só os dados que fazem sentido para ela, uma
 dedução tem método e exclusões, um erro tem as regras violadas, e
-`AllDone` não tem nada. Com um único record cheio de `Maybe`, a tela
-teria de lidar com combinações que nunca acontecem.
+`AllDone` não tem nada. com um único record cheio de `Maybe`, a tela
+teria de lidar com combinações que nunca acontecem
 -}
 type Hint
     = Deduce
@@ -119,9 +119,9 @@ exclusionText exclusion =
         ++ ruleExplanation exclusion.rules
 
 
-{-| Completa frases como "é impossível ..." e "ela é excluída ...". A lista
+{-| completa frases como "é impossível ..." e "ela é excluída ...". a lista
 vazia vem do Prolog quando nenhuma regra isolada nem nenhum par de regras
-basta para excluir o valor.
+basta para excluir o valor
 -}
 ruleExplanation : List Rule -> String
 ruleExplanation rules =

@@ -1,6 +1,6 @@
 module Main exposing (main)
 
-{-| Interface do Ocaso, na Arquitetura Elm.
+{-| Interface do Ocaso, na Arquitetura Elm
 
   - `Model`: o estado inteiro da aplicação, num valor imutável;
   - `Msg`: tudo o que pode acontecer (cliques, teclas, respostas HTTP);
@@ -8,8 +8,8 @@ module Main exposing (main)
     efeitos (requisições) a executar;
   - `view`: desenha o `Model`. A tela é uma função do estado.
 
-As regras do jogo ficam em `Ocaso`, os textos das dicas em `Hint` e o HTTP
-em `Api`. Este módulo só liga as peças.
+as regras do jogo ficam em `Ocaso`, os textos das dicas em `Hint` e o HTTP
+em `Api`. este módulo só liga as peças umas nas outras
 
 -}
 
@@ -43,19 +43,19 @@ main =
 -- MODEL
 
 
-{-| Dados que o main.js entrega na inicialização.
+{-| dados que o main.js entrega na inicialização
 -}
 type alias Flags =
     { darkTheme : Bool
     }
 
 
-{-| Qual requisição está em andamento, se alguma.
+{-| Qual requisição está em andamento, se alguma
 
-Com um `Bool loading` não daria para saber o que mostrar ("gerando",
-"resolvendo"...), e nada impediria dois pedidos ao mesmo tempo. Com este
+com um `Bool loading` não daria para saber o que mostrar ("gerando",
+"resolvendo"...), e nada impediria dois pedidos ao mesmo tempo. com este
 tipo, a mensagem de espera sai de um `case`, e os botões ficam desativados
-enquanto o valor não for `Idle`.
+enquanto o valor não for `Idle`
 
 -}
 type Pending
@@ -65,12 +65,12 @@ type Pending
     | RequestingHint
 
 
-{-| Uma partida em andamento.
+{-| Uma partida em andamento
 
-Puzzle, tabuleiro, seleção, histórico e dica vivem e morrem juntos: quando
-chega um puzzle novo, tudo isso é recriado de uma vez. Por isso ficam num
-mesmo registro, e o `Model` guarda um `Maybe Game`. Assim não existe
-"tabuleiro sem puzzle" nem "seleção sem tabuleiro".
+puzzle, tabuleiro, seleção, histórico e dica vivem e morrem juntos, quando
+chega um puzzle novo, tudo isso é recriado de uma vez. por isso ficam num
+mesmo registro, e o `Model` guarda um `Maybe Game`. assim não existe
+"tabuleiro sem puzzle" nem "seleção sem tabuleiro"
 
 -}
 type alias Game =
@@ -213,7 +213,7 @@ failed error model =
     { model | pending = Idle, error = Just error }
 
 
-{-| Executa o passo só se não houver requisição em andamento.
+{-| executa o passo só se não houver requisição em andamento
 -}
 whenIdle : Model -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
 whenIdle model next =
@@ -239,8 +239,8 @@ updateGame change model =
     { model | game = Maybe.map change model.game }
 
 
-{-| Como `updateGame`, mas só quando o jogador pode mexer no tabuleiro (nada
-em andamento). Um clique durante uma requisição é ignorado.
+{-| como `updateGame`, mas só quando o jogador pode mexer no tabuleiro (nada
+em andamento). um clique durante uma requisição é ignorado
 -}
 playing : (Game -> Game) -> Model -> Model
 playing change model =
@@ -251,11 +251,11 @@ playing change model =
         model
 
 
-{-| Aplica uma alteração ao tabuleiro. Se algo mudou, o tabuleiro anterior
+{-| aplica uma alteração ao tabuleiro. se algo mudou, o tabuleiro anterior
 vai para o histórico (para desfazer) e a dica antiga deixa de valer.
 
-Desfazer é simples porque os dados são imutáveis: guardar o tabuleiro
-anterior é só guardar uma referência a ele; nada o modifica depois.
+desfazer é simples porque os dados são imutáveis: guardar o tabuleiro
+anterior é só guardar uma referência a ele; nada o modifica depois
 
 -}
 edit : (Board -> Board) -> Game -> Game
@@ -291,7 +291,7 @@ undo game =
             game
 
 
-{-| Move a seleção com as setas; `modBy` faz a seleção dar a volta nas bordas.
+{-| move a seleção com as setas, `modBy` faz a seleção dar a volta nas bordas.
 -}
 moveSelection : Int -> Int -> Game -> Game
 moveSelection dRow dCol game =
@@ -334,8 +334,8 @@ subscriptions _ =
     Browser.Events.onKeyDown keyDecoder
 
 
-{-| Para as teclas que não interessam, o decoder falha; um decoder que falha
-não gera mensagem, então o `update` nem fica sabendo delas.
+{-| para as teclas que não interessam, o decoder falha, um decoder que falha
+não gera mensagem, então o `update` nem fica sabendo delas
 -}
 keyDecoder : Decoder Msg
 keyDecoder =
@@ -445,7 +445,7 @@ kbd =
     Html.node "kbd"
 
 
-{-| Checkbox `theme-controller` do daisyUI: marcado, o CSS aplica o tema escuro.
+{-| checkbox `theme-controller` do daisyUI: marcado, o CSS aplica o tema escuro
 -}
 viewThemeToggle : Model -> Html Msg
 viewThemeToggle model =
@@ -571,8 +571,8 @@ viewColumnClue col ( clue, status ) =
         [ text (String.fromInt clue) ]
 
 
-{-| Uma linha do tabuleiro: o sol fica no lado de onde vem e a pista de
-sombra no lado para onde a sombra vai.
+{-| uma linha do tabuleiro: o sol fica no lado de onde vem e a pista de
+sombra no lado para onde a sombra vai
 -}
 viewRow : Game -> Analysis -> String -> Int -> RowClue -> ClueStatus -> List ( Position, Cell ) -> Html Msg
 viewRow game analysis columnTemplate row rowClue status line =

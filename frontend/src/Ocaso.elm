@@ -25,13 +25,12 @@ module Ocaso exposing
     , rows
     )
 
-{-| Tipos e regras do Ocaso, do lado do Elm.
+{-| Tipos e regras do Ocaso, do lado do Elm
 
-Este módulo é PURO: não faz HTTP e não conhece HTML. Ele responde às
+este módulo é PURO, ou seja, não faz HTTP e não conhece HTML. ele responde às
 perguntas que a tela precisa responder a cada clique (onde há sombra, quais
 pistas já fecham, se o puzzle está resolvido) sem chamar o Prolog. O Prolog
-só é chamado para o que exige busca: gerar, resolver e explicar dicas.
-
+só é chamado para o que exige busca: gerar, resolver e explicar dicas
 -}
 
 import Array exposing (Array)
@@ -47,8 +46,8 @@ type Sun
     | East
 
 
-{-| Uma torre só pode ter altura 1, 2 ou 3. Com um `Int` seria possível
-representar uma torre de altura 0 ou 7; com este tipo, não.
+{-| uma torre só pode ter altura 1, 2 ou 3. com um `Int` seria possível
+representar uma torre de altura 0 ou 7, já com este tipo, não
 -}
 type Height
     = Low
@@ -56,15 +55,15 @@ type Height
     | High
 
 
-{-| O que há num terreno decidido: chão (sem torre) ou uma torre.
+{-| o que há num terreno decidido: chão (sem torre) ou uma torre
 -}
 type Content
     = Ground
     | Tower Height
 
 
-{-| Quem decidiu a casa. A origem define o que o jogador pode mudar: casas
-reveladas pelo puzzle (`Given`) e pelo Prolog (`Prolog`) ficam travadas.
+{-| quem decidiu a casa. a origem define o que o jogador pode mudar: casas
+reveladas pelo puzzle (`Given`) e pelo Prolog (`Prolog`) ficam travadas
 -}
 type Source
     = Given
@@ -72,13 +71,13 @@ type Source
     | Prolog
 
 
-{-| Uma casa é um lago, um terreno ainda não decidido, ou um terreno
-decidido, com conteúdo e origem.
+{-| uma casa é um lago, um terreno ainda não decidido, ou um terreno
+decidido, com conteúdo e origem
 
-Separar `Undecided` de `Decided _ Ground` permite ao jogador marcar "aqui
-não tem torre" sem confundir isso com "ainda não pensei nesta casa". E como
+separar `Undecided` de `Decided _ Ground` permite ao jogador marcar "aqui
+não tem torre" sem confundir isso com "ainda não pensei nesta casa". e como
 o lago é um construtor próprio, não existe "lago com torre": o tipo não
-deixa escrever esse estado.
+deixa escrever esse estado
 
 -}
 type Cell
@@ -97,9 +96,9 @@ type alias Position =
     ( Int, Int )
 
 
-{-| O lado do sol e a pista de sombra de uma linha andam sempre juntos, então
-ficam no mesmo registro. Duas listas paralelas (sóis e pistas) poderiam ter
-tamanhos diferentes; uma lista de `RowClue` não.
+{-| o lado do sol e a pista de sombra de uma linha andam sempre juntos, então
+ficam no mesmo registro. duas listas paralelas (sóis e pistas) poderiam ter
+tamanhos diferentes, uma lista de `RowClue` não
 -}
 type alias RowClue =
     { sun : Sun
@@ -116,13 +115,12 @@ type alias Puzzle =
     }
 
 
-{-| O tabuleiro guarda o próprio tamanho junto com as casas.
+{-| O tabuleiro guarda o próprio tamanho junto com as casas
 
-O tipo é OPACO: o módulo exporta `Board`, mas não o construtor. De fora não
+o tipo é OPACO: o módulo exporta `Board`, mas não o construtor. de fora não
 dá para montar um tabuleiro com um tamanho e um número de casas que não
 batem; só `boardFromPuzzle` cria tabuleiros, e só as funções daqui os
-alteram.
-
+alteram
 -}
 type Board
     = Board Int (Array Cell)
@@ -147,9 +145,9 @@ boardFromPuzzle puzzle =
         puzzle.givens
 
 
-{-| As casas linha por linha, cada uma com a sua posição. A tela percorre
+{-| as casas linha por linha, cada uma com a sua posição. a tela percorre
 esta lista em vez de pedir casa por casa, então nunca precisa tratar uma
-posição inexistente.
+posição inexistente
 -}
 rows : Board -> List (List ( Position, Cell ))
 rows (Board size array) =
@@ -168,8 +166,8 @@ chunksOf size list =
         List.take size list :: chunksOf size (List.drop size list)
 
 
-{-| As casas decididas pelo jogador ou pelo Prolog. É o que o Prolog precisa
-receber para dar uma dica (as reveladas pelo puzzle ele já conhece).
+{-| as casas decididas pelo jogador ou pelo Prolog. é o que o Prolog precisa
+receber para dar uma dica (as reveladas pelo puzzle ele já conhece)
 -}
 decisions : Board -> List ( Position, Content )
 decisions board =
@@ -219,7 +217,7 @@ heightFromInt value =
             Nothing
 
 
-{-| A altura no formato da API: 0 para chão.
+{-| a altura no formato da API: 0 para chão
 -}
 contentValue : Content -> Int
 contentValue content =
@@ -245,16 +243,15 @@ towerHeight cell =
 -- SOMBRAS E PISTAS
 
 
-{-| Quais casas de uma linha estão na sombra.
+{-| Quais casas de uma linha estão na sombra
 
-Uma casa está na sombra se alguma torre antes dela (no sentido em que a
+uma casa está na sombra se alguma torre antes dela (no sentido em que a
 sombra anda) a alcança, isto é, se a posição da torre mais a sua altura
-chega até a casa. Percorremos a linha uma vez guardando o alcance máximo
-até ali (`reach`).
+chega até a casa. percorremos a linha uma vez guardando o alcance máximo
+até ali (`reach`)
 
-Com o sol a leste a sombra anda para oeste. Em vez de uma segunda versão,
-invertemos a linha, como faz o `row_shadows/3` do Prolog.
-
+com o sol a leste a sombra anda para oeste. em vez de uma segunda versão,
+invertemos a linha, como faz o `row_shadows/3` do Prolog
 -}
 rowShadows : Sun -> List Cell -> List Bool
 rowShadows sun line =
@@ -284,12 +281,11 @@ castShadows line =
     List.reverse reversed
 
 
-{-| Tudo o que a tela precisa saber sobre o tabuleiro atual.
+{-| Tudo o que a tela precisa saber sobre o tabuleiro atual
 
-É calculado uma única vez por desenho da tela (em vez de cada casa
+é calculado uma única vez por desenho da tela (em vez de cada casa
 recalcular as sombras do tabuleiro inteiro) e reúne as quatro regras do
 jogo num só lugar.
-
 -}
 type alias Analysis =
     { shaded : Set Position
@@ -377,15 +373,6 @@ clueStatus actual clue =
         Exact
 
 
-
--- ALTERAÇÕES
---
--- Toda alteração é uma função `Cell -> Cell` aplicada numa posição por
--- `updateCell`. Cada função decide sozinha o que fazer com cada tipo de
--- casa (o `case` é exaustivo), e as regras de "o que está travado" ficam
--- escritas uma vez só, aqui.
-
-
 updateCell : Position -> (Cell -> Cell) -> Board -> Board
 updateCell ( row, col ) change ((Board size array) as board) =
     let
@@ -404,8 +391,8 @@ updateCell ( row, col ) change ((Board size array) as board) =
                 board
 
 
-{-| O clique numa casa: não decidida -> torre 1 -> 2 -> 3 -> chão -> torre 1.
-Só casas do jogador mudam.
+{-| o clique numa casa: não decidida -> torre 1 -> 2 -> 3 -> chão -> torre 1.
+Só casas do jogador mudam
 -}
 cycleCell : Position -> Board -> Board
 cycleCell position =
@@ -468,8 +455,8 @@ clearCell position =
         )
 
 
-{-| Uma casa revelada pelo Prolog (dica ou solução). Ela pode substituir uma
-decisão do jogador, mas nunca um lago ou uma casa revelada pelo puzzle.
+{-| uma casa revelada pelo Prolog (dica ou solução). ela pode substituir uma
+decisão do jogador, mas nunca um lago ou uma casa revelada pelo puzzle
 -}
 revealCell : Position -> Content -> Board -> Board
 revealCell position content =

@@ -6,16 +6,15 @@ module Api exposing
     , solve
     )
 
-{-| Comunicação com o backend (FastAPI + Prolog) e conversão de JSON.
-
-As funções daqui devolvem `Cmd msg`: a DESCRIÇÃO de uma requisição. Quem a
+{-| aqui acontece a comunicação com o backend (FastAPI + Prolog) e conversão de JSON.
+aqui as funções devolvem `Cmd msg`: que é a DESCRIÇÃO de uma requisição. quem a
 executa é o runtime do Elm, que entrega a resposta ao `update` como uma
-mensagem com um `Result`.
+mensagem com um `Result`
 
-Este é o único módulo que conhece o formato do JSON. O resto do programa só
-vê os tipos de `Ocaso` e `Hint`. Os decoders não aceitam qualquer coisa: um
+este é o único módulo que conhece o formato do JSON. o resto do programa só
+vê os tipos de `Ocaso` e `Hint`. os decoders não aceitam qualquer coisa, tipo: um
 puzzle com pistas faltando ou uma altura 7 viram um `Err`, nunca um valor
-inválido dentro do programa.
+inválido dentro do programa
 
 -}
 
@@ -46,7 +45,7 @@ difficultyLabel difficulty =
             "Difícil"
 
 
-{-| O nome usado pela API (e pelo Prolog: são os átomos easy, medium, hard).
+{-| o nome usado pela API (e pelo Prolog: são os átomos easy, medium, hard)
 -}
 difficultyName : Difficulty -> String
 difficultyName difficulty =
@@ -103,8 +102,8 @@ hint puzzle board toMsg =
 -- JSON: ENVIO
 
 
-{-| No JSON, sóis e pistas de linha são duas listas separadas (é o formato
-que o Prolog recebe). No domínio eles andam juntos em `RowClue`.
+{-| no JSON, sóis e pistas de linha são duas listas separadas, que é o formato
+que o Prolog recebe. no domínio eles andam juntos em `RowClue`.
 -}
 encodePuzzle : Puzzle -> Encode.Value
 encodePuzzle puzzle =
@@ -118,7 +117,7 @@ encodePuzzle puzzle =
         ]
 
 
-{-| `[linha, coluna, altura]`, com altura 0 para chão.
+{-| `[linha, coluna, altura]`, com altura 0 para chão
 -}
 encodeDecision : ( Position, Content ) -> Encode.Value
 encodeDecision ( ( row, col ), content ) =
@@ -144,9 +143,9 @@ sunName sun =
 -- JSON: RECEBIMENTO
 
 
-{-| O puzzle exatamente como vem no JSON, antes de ser conferido. Ele só
+{-| o puzzle exatamente como vem no JSON, antes de ser conferido. ele só
 existe dentro deste módulo; `toPuzzle` o transforma no `Puzzle` do domínio
-ou falha com uma mensagem.
+ou falha com uma mensagem
 -}
 type alias WirePuzzle =
     { size : Int
@@ -216,9 +215,9 @@ givenDecoder =
             )
 
 
-{-| Confere o puzzle recebido e monta o `Puzzle` do domínio. As listas de
+{-| confere o puzzle recebido e monta o `Puzzle` do domínio. as listas de
 sóis e de pistas só são juntadas depois de conferido que têm o mesmo
-tamanho (`List.map2` descartaria em silêncio o que sobrasse).
+tamanho (`List.map2` descartaria em silêncio o que sobrasse)
 -}
 toPuzzle : WirePuzzle -> Decoder Puzzle
 toPuzzle wire =
@@ -265,7 +264,7 @@ toPuzzle wire =
             }
 
 
-{-| A solução: `size` linhas com `size` casas, cada uma chão ou torre.
+{-| a solução: `size` linhas com `size` casas, cada uma chão ou torre
 -}
 solutionDecoder : Int -> Decoder (List (List Content))
 solutionDecoder size =
@@ -280,7 +279,7 @@ solutionDecoder size =
             )
 
 
-{-| As dicas chegam com um campo `kind` que diz a forma do resto do JSON.
+{-| as dicas chegam com um campo `kind` que diz a forma do resto do JSON.
 `Decode.andThen` lê esse campo primeiro e escolhe o decoder de cada caso.
 -}
 hintDecoder : Decoder Hint
@@ -371,7 +370,7 @@ methodDecoder =
             )
 
 
-{-| 0 é chão; 1 a 3 são torres; qualquer outro número é um erro.
+{-| 0 é chão; 1 a 3 são torres, qualquer outro número é um erro.
 -}
 contentDecoder : Int -> Decoder Content
 contentDecoder value =
@@ -387,8 +386,8 @@ contentDecoder value =
 
 -- ERROS
 --
--- `Http.expectJson` descarta o corpo das respostas de erro. O backend manda
--- uma mensagem útil em `{"detail": "..."}`, então esta versão a aproveita.
+-- `Http.expectJson` descarta o corpo das respostas de erro. o backend manda
+-- uma mensagem útil em `{"detail": "..."}`, então esta versão a aproveita
 
 
 expectJson : (Result String value -> msg) -> Decoder value -> Http.Expect msg
@@ -413,8 +412,8 @@ expectJson toMsg decoder =
                     Err "Não foi possível falar com o servidor. O backend está rodando?"
 
 
-{-| As falhas que os próprios decoders declaram (`Decode.fail`, como em
-`toPuzzle`) já trazem uma mensagem legível; as demais viram um texto genérico.
+{-| as falhas que os próprios decoders declaram (`Decode.fail`, como em
+`toPuzzle`) já trazem uma mensagem legível, as demais viram um texto genérico
 -}
 decodeErrorMessage : Decode.Error -> String
 decodeErrorMessage error =
@@ -426,8 +425,8 @@ decodeErrorMessage error =
             "Resposta inesperada do servidor."
 
 
-{-| Quando o Pydantic rejeita o JSON, `detail` é uma lista de erros e não um
-texto; nesse caso mostramos uma mensagem genérica com o código HTTP.
+{-| quando o Pydantic rejeita o JSON, `detail` é uma lista de erros e não um
+texto, nesse caso mostramos uma mensagem genérica com o código HTTP
 -}
 errorDetail : Int -> String -> String
 errorDetail status body =

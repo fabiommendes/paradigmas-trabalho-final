@@ -3,8 +3,8 @@ import "./style.css";
 import { Elm } from "./Main.elm";
 
 const THEME_KEY = "ocaso-theme";
-// Em aba anônima ou com cookies bloqueados, o localStorage lança exceção.
-// Sem a proteção, o Elm nem chegaria a iniciar.
+// em aba anônima ou com cookies bloqueados, o localStorage lança exceção
+// sem a proteção, o Elm nem chegaria a iniciar
 let savedTheme = null;
 try {
   savedTheme = localStorage.getItem(THEME_KEY);
@@ -24,7 +24,7 @@ document.addEventListener("change", (event) => {
     try {
       localStorage.setItem(THEME_KEY, event.target.checked ? "dark" : "light");
     } catch {
-      // Sem armazenamento: o tema só não fica salvo para a próxima visita.
+      // sem armazenamento: o tema só não fica salvo para a próxima visita
     }
   }
 });
