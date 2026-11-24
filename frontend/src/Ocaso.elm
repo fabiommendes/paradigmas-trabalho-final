@@ -31,6 +31,7 @@ este módulo é PURO, ou seja, não faz HTTP e não conhece HTML. ele responde �
 perguntas que a tela precisa responder a cada clique (onde há sombra, quais
 pistas já fecham, se o puzzle está resolvido) sem chamar o Prolog. O Prolog
 só é chamado para o que exige busca: gerar, resolver e explicar dicas
+
 -}
 
 import Array exposing (Array)
@@ -121,6 +122,7 @@ o tipo é OPACO: o módulo exporta `Board`, mas não o construtor. de fora não
 dá para montar um tabuleiro com um tamanho e um número de casas que não
 batem; só `boardFromPuzzle` cria tabuleiros, e só as funções daqui os
 alteram
+
 -}
 type Board
     = Board Int (Array Cell)
@@ -252,6 +254,7 @@ até ali (`reach`)
 
 com o sol a leste a sombra anda para oeste. em vez de uma segunda versão,
 invertemos a linha, como faz o `row_shadows/3` do Prolog
+
 -}
 rowShadows : Sun -> List Cell -> List Bool
 rowShadows sun line =
@@ -286,6 +289,7 @@ castShadows line =
 é calculado uma única vez por desenho da tela (em vez de cada casa
 recalcular as sombras do tabuleiro inteiro) e reúne as quatro regras do
 jogo num só lugar.
+
 -}
 type alias Analysis =
     { shaded : Set Position
